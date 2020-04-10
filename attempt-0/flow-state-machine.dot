@@ -1,0 +1,253 @@
+/*
+	This file describes the flow state machine of the FL actor/component
+	management system.
+
+	The two data flows: 
+
+		actor-data-flow.dot
+		component-data-flow.dot
+
+	are interleaved into a single state machine that is run each frame. 
+
+	Test situation for a frame.
+	(universe always exists)
+	Ua = make-component 'universe
+	Ca = make-component 'transform
+
+	(example creation of some prefab)
+	Cb = make-component 'transform
+	Cc = make-component 'mesh
+	Cd = make-component 'mesh-renderer
+	Aa = spawn 'AAA
+	attach-components Aa Cb Cc Cd
+
+	Ce = make-component 'transform
+	Cf = make-component 'mesh
+	Cg = make-component 'mesh-renderer
+	Ab = spawn 'BBB
+	attach-components Ab Ce Cf Cg
+
+	reparent-actor Ab Aa
+
+	-------------------------------------------------------------------------
+
+	TODO: Option for actor to re-enable all children or only what was
+			previously enabled in the children.
+
+	Used Actor flowstate states:
+
+	Afs-000 route-created-actors
+	Afs-001 route-enabling-actors
+	Afs-002 route-disabling-actors
+	Afs-003 route-spawned-actors
+
+	Afs-004 process-reparenting-queue
+		[while connecting a parent, do automatic shadowing/recursive algo.]
+
+	Afs-005 route-reparented-actors
+	Afs-006 parent-transform-to-universe
+	Afs-007 route-parented-actors
+
+	Afs-008 enable-actor-if-not-enabled
+		[Make sure to deal with shadowing of enabling actors.]
+
+	Afs-009 route-enabled-actors
+	Afs-010 decr-ttl-if-real-number
+	Afs-011 route-timed-out-actors
+	Afs-012 route-disabled-actors
+	Afs-013 route-dying-actors
+	Afs-014 destroy-self-components
+	Afs-015 route-dead-actors
+	Afs-016 process-children-policy
+	Afs-017 route-dead-parented-actors
+	Afs-018 unparent-actor
+	Afs-019 route-dead-unparented-actors
+	Afs-020 release-destroyed-actors
+	Afs-021 disable-actor-if-enabled
+
+	Used Component flowstate states:
+
+	Cfs-000 route-created-components
+	Cfs-001 route-detached-components
+	Cfs-002 route-attaching-components
+	Cfs-003 set-enable-p-T
+	Cfs-004 route-enabling-components
+	Cfs-005 set-enable-p-NIL
+	Cfs-006 route-disabling-components
+	Cfs-007 protocol/on-component-initialize
+	Cfs-008 route-inirialized-components
+	Cfs-009 protocol/on-component-detach
+	Cfs-010 actually-detach-components
+	Cfs-011 route-detached-components
+	Cfs-012 route-detached-destroying-components
+	Cfs-013 actually-connect-components
+	Cfs-014 Invoke/attachment-thunks
+	Cfs-015 protocol/on-component-attach
+	Cfs-016 route-attached-components
+	Cfs-017 protocol/on-component-enable
+	Cfs-018 route-enabled-components
+	Cfs-019 protocol/in-component-disable
+	Cfs-020 route-disabled-components
+	Cfs-021 physics-loop
+	Cfs-021-0 protocol/on-component-physics-update
+	Cfs-021-1 physics-collisions
+	Cfs-022 make-active-camera-view
+	Cfs-023 protocol/on-component-update
+	Cfs-024 protocol/on-component-render
+	Cfs-025 decr-ttl-if-real-number
+	Cfs-026 route-active-destroying-components
+	Cfs-027 route-inactive-destroying-components
+	Cfs-028 protocol/on-component/destroy
+	Cfs-029 release-destroyed-components
+*/
+
+digraph G {
+	label = "Actor/Component Call Flow";
+	labelloc = top;
+	fontsize=30;
+	
+	// Actor flow states
+	afs_000 [shape=box; label="Afs-000 route-created-actors"]
+	afs_001 [shape=box; label="Afs-001 route-enabling-actors"]
+	afs_002 [shape=box; label="Afs-002 route-disabling-actors"]
+	afs_003 [shape=box; label="Afs-003 route-spawned-actors"]
+	afs_004 [shape=box; label="Afs-004 process-reparenting-queue"]
+	afs_005 [shape=box; label="Afs-005 route-reparented-actors"]
+	afs_006 [shape=box; label="Afs-006 parent-transform-to-universe"]
+	afs_007 [shape=box; label="Afs-007 route-parented-actors"]
+	afs_008 [shape=box; label="Afs-008 enable-actor-if-not-enabled"]
+	afs_009 [shape=box; label="Afs-009 route-enabled-actors"]
+	afs_010 [shape=box; label="Afs-010 decr-ttl-if-real-number"]
+	afs_011 [shape=box; label="Afs-011 route-timed-out-actors"]
+	afs_012 [shape=box; label="Afs-012 route-disabled-actors"]
+	afs_013 [shape=box; label="Afs-013 route-dying-actors"]
+	afs_014 [shape=box; label="Afs-014 destroy-self-components"]
+	afs_015 [shape=box; label="Afs-015 route-dead-actors"]
+	afs_016 [shape=box; label="Afs-016 process-children-policy"]
+	afs_017 [shape=box; label="Afs-017 route-dead-parented-actors"]
+	afs_018 [shape=box; label="Afs-018 unparent-actor"]
+	afs_019 [shape=box; label="Afs-019 route-dead-unparented-actors"]
+	afs_020 [shape=box; label="Afs-020 release-destroyed-actors"]
+	afs_021 [shape=box; label="Afs-021 disable-actor-if-enabled"]
+
+	// Component flow states.
+	cfs_000 [shape=box; label="Cfs-000 route-created-components"]
+	cfs_001 [shape=box; label="Cfs-001 route-detached-components"]
+	cfs_002 [shape=box; label="Cfs-002 route-attaching-components"]
+	cfs_003 [shape=box; label="Cfs-003 set-enable-p-T"]
+	cfs_004 [shape=box; label="Cfs-004 route-enabling-components"]
+	cfs_005 [shape=box; label="Cfs-005 set-enable-p-NIL"]
+	cfs_006 [shape=box; label="Cfs-006 route-disabling-components"]
+	cfs_007 [shape=box; label="Cfs-007 protocol/on-component-initialize"]
+	cfs_008 [shape=box; label="Cfs-008 route-inirialized-components"]
+	cfs_009 [shape=box; label="Cfs-009 protocol/on-component-detach"]
+	cfs_010 [shape=box; label="Cfs-010 actually-detach-components"]
+	cfs_011 [shape=box; label="Cfs-011 route-detached-components"]
+	cfs_012 [shape=box; label="Cfs-012 route-detached-destroying-components"]
+	cfs_013 [shape=box; label="Cfs-013 actually-connect-components"]
+	cfs_014 [shape=box; label="Cfs-014 Invoke/attachment-thunks"]
+	cfs_015 [shape=box; label="Cfs-015 protocol/on-component-attach"]
+	cfs_016 [shape=box; label="Cfs-016 route-attached-components"]
+	cfs_017 [shape=box; label="Cfs-017 protocol/on-component-enable"]
+	cfs_018 [shape=box; label="Cfs-018 route-enabled-components"]
+	cfs_019 [shape=box; label="Cfs-019 protocol/in-component-disable"]
+	cfs_020 [shape=box; label="Cfs-020 route-disabled-components"]
+	cfs_021 [shape=box; label="Cfs-021 physics-loop"]
+	cfs_021-0 [shape=box; label="Cfs-021-0 protocol/on-component-physics-update"]
+	cfs_021-1 [shape=box; label="Cfs-021-1 physics-collisions"]
+	cfs_022 [shape=box; label="Cfs-022 make-active-camera-view"]
+	cfs_023 [shape=box; label="Cfs-023 protocol/on-component-update"]
+	cfs_024 [shape=box; label="Cfs-024 protocol/on-component-render"]
+	cfs_025 [shape=box; label="Cfs-025 decr-ttl-if-real-number"]
+	cfs_026 [shape=box; label="Cfs-026 route-active-destroying-components"]
+	cfs_027 [shape=box; label="Cfs-027 route-inactive-destroying-components"]
+	cfs_028 [shape=box; label="Cfs-028 protocol/on-component/destroy"]
+	cfs_029 [shape=box; label="Cfs-029 release-destroyed-components"]
+
+	// Supplementary flow states needed to implement the state machine.
+
+
+	// The flow state machine:
+
+	// ///////////////////
+	// Init/Attach/Reparent/Enable Phase
+	// ///////////////////
+
+	// 1. Ensure there are actors to which future components can attach.
+	// These actors are in a-:spawning state.
+	afs_000
+
+	// 2. Initialize any c-:created components
+	cfs_000
+	// Put into c-:initializing state and call on-component-initalize
+	cfs_007
+	cfs_008
+
+	// 3. Physically attach components
+	cfs_002
+	cfs_013
+
+	// 4. Spawning completed enough to move actor forward.
+	afs_003
+
+	// 5. Parent actors to universe (needs transform component)
+	afs_006
+	afs_007
+
+	// 6. Reparent actors to each other [do shadowing algo]
+	afs_004
+	afs_005
+
+	// 7. Complete attaching components
+	cfs_014
+	cfs_015
+
+	// 8. handle pending actor _enable_ requests
+	afs_001
+	afs_008
+
+	// 9. some actors become active.
+	afs_009
+
+	// 10. Finally route componets that might have changed their enabledness
+	// depending upon the just updated actor settings.
+	cfs_016
+
+	// 11. Enable components.
+	cfs_003
+	cfs_004
+	cfs_017
+
+	// 12. Some components become active
+	cfs_018
+
+	// ///////////////////
+	// Active Phase
+	// ///////////////////
+
+	// 13. run the components work
+	cfs_021
+	cfs_022
+	cfs_023
+	cfs_024
+	cfs_025
+
+	// 14. run the actors work
+	afs_010
+
+	// ///////////////////
+	// Disable/Inactive/Detach/Destroy Phase
+	// ///////////////////
+
+	// 15. Move potentially destroying actors to disabling
+	afs_011
+	afs_002
+	// disabling active components cause ttl <= 0
+	cfs_026
+
+	// disable component requests
+	cfs_005
+	cfs_006
+
+}
+

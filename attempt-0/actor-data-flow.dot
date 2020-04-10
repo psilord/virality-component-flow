@@ -1,0 +1,364 @@
+digraph G {
+	label = "Actor Data Flow";
+	labelloc = top;
+	fontsize=30;
+
+	// Notes:
+	// 'b-' means dataflow state that is not an actor state.
+	// 'a-' means dataflow state that is also a actor state.
+	//
+	// Single line octagon states are always transitory states each frame.
+	// Double line octagon states can hold actors across frames.
+
+	// user API: functions that insert requests into the boxes 
+	// to be processed NEXT frame.
+	func_spawn [shape=oval label="spawn";
+				color=lightgrey style=filled]
+	func_reparent_actor [shape=oval label="reparent-actor";
+						color=lightgrey style=filled]
+	func_enable_actor [shape=oval label="enable-actor";
+						color=lightgrey style=filled]
+	func_disable_actor [shape=oval label="disable-actor";
+						color=lightgrey style=filled]
+
+	// The folder shape means a "datastore of request objs"
+	// The datastore can be various thigns like queues, hashes, or type tables.
+
+	// new components requested to be handled
+	areq_spawn [shape=folder; margin=0; 
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>areq_spawn</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Processing State</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>a-:created</B> [accept]</TD></TR>
+		</TABLE>>]
+
+	// enable requests
+	areq_enable [shape=folder; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>areq_enable</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Processing State</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>a-:inactive</B> [accept]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>a-:active</B> [nop]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>a-:released</B> [error]</TD></TR>
+		</TABLE>>]
+
+	// disable requests
+	areq_disable [shape=folder; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>areq_disable</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Processing State</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>a-:active</B> [accept]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>a-:inactive</B> [nop]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>a-:released</B> [error]</TD></TR>
+		</TABLE>>]
+
+	// reparent requests
+	areq_reparent [shape=folder; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>areq_reparent</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Processing State</TD></TR>
+			// Note spawned actors end up in reparenting and they might
+			// have another reparenting request to be parented to someone else
+			// immediately. Hence, a :reparenting actor can have an outstanding
+			// request to reparent again.
+			<TR><TD ALIGN="LEFT"><B>a-:reparenting</B> [accept]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>a-:active</B> [accept]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>a-:inactive</B> [accept]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>a-:released</B> [error]</TD></TR>
+		</TABLE>>]
+
+
+	// Process states take requests, validate them, and shove them into the
+	// dataflow.
+
+	// box means a flow state that "process the associated requests"
+	proc_areq_spawn
+		[shape=box;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>b-:process_areq_spawn</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Afs-000: route-created-actors</TD></TR>
+		</TABLE>>]
+
+	proc_areq_enable
+		[shape=box;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>b-:process_areq_enable</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Afs-001: route-enabling-actors</TD></TR>
+		</TABLE>>]
+	
+	proc_areq_disable
+		[shape=box;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>b-:process_areq_disable</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Afs-002: route-disabling-actors</TD></TR>
+		</TABLE>>]
+
+	// Actor states alter the actor state slot to contain the name of
+	// the state. These states do piles of work on the actors themselves.
+
+	// Actor States
+	as_spawning
+		[shape=octagon; margin = 0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>a-:spawning</B> [view table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Afs-003: route-spawned-actors</TD></TR>
+		</TABLE>>]
+
+	// This catches all instances where we don't specify a parent for an actor.
+	// It is expected that a gamedev will supply parents for actors voa the
+	// REPARENT-ACTOR call. (Same with the scene DSL.) In that common case, 
+	// the spawning actor will be reparented AGAIN to the correct parent.
+	// The reason there are two states is because it is ambiguous to know if
+	// an actor will have a future request or not to reparent, and all actors
+	// require a parent. 
+	as_universe_parent
+		[shape=octagon; margin = 0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>a-:universe_parent</B> [view table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Afs-006: parent-transform-to-universe</TD></TR>
+			<TR><TD ALIGN="LEFT">Afs-007: route-parented-actors</TD></TR>
+		</TABLE>>]
+
+	as_reparenting
+		[shape=octagon; margin = 0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>a-:reparenting</B> [view table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Afs-004: process-reparenting-queue</TD></TR>
+			<TR><TD ALIGN="LEFT">Afs-005: route-reparented-actors</TD></TR>
+		</TABLE>>]
+
+	as_enabling
+		[shape=octagon; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>a-:enabling</B> [view table]</TD></TR>
+			<HR/>
+			// If an actor ends up in here alreasdy enabled, nop it and
+			// just route to the next stage.
+			<TR><TD ALIGN="LEFT">Afs-008: enable-actor-if-not-enabled</TD></TR>
+			<TR><TD ALIGN="LEFT">Afs-009: route-enabled-actors</TD></TR>
+		</TABLE>>]
+
+	as_disabling
+		[shape=octagon; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>a-:disabling</B> [view table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Afs-021: disable-actors-if-enabled</TD></TR>
+			<TR><TD ALIGN="LEFT">Afs-012: route-disabled-actors</TD></TR>
+		</TABLE>>]
+
+	as_active
+		[shape=doubleoctagon; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>a-:active</B> [view table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Afs-010: decr-ttl-if-real-number</TD></TR>
+			<TR><TD ALIGN="LEFT">Afs-011: route-timed-out-actors</TD></TR>
+		</TABLE>>]
+
+	as_inactive
+		[shape=doubleoctagon; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>a-:inactive</B> [view table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Afs-013: route-dying-actors</TD></TR>
+		</TABLE>>]
+
+	as_dying
+		[shape=octagon; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>a-:dying</B> [view table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Afs-014: destroy-self-components</TD></TR>
+			<TR><TD ALIGN="LEFT">Afs-015: route-dead-actors</TD></TR>
+		</TABLE>>]
+
+	as_dead
+		[shape=octagon; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>a-:dead</B> [view table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Afs-016: process-children-death-policy [recursively destroy | reparent children request]</TD></TR>
+			<TR><TD ALIGN="LEFT">Afs-017: route-dead-parented-actors</TD></TR>
+		</TABLE>>]
+
+	as_unparenting
+		[shape=octagon; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>a-:unparenting</B> [view table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Afs-018: unparent-actor</TD></TR>
+			<TR><TD ALIGN="LEFT">Afs-019: route-dead-unparented-actors</TD></TR>
+		</TABLE>>]
+
+	as_destroying
+		[shape=octagon; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>a-:destroying</B> [view table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Afs-020: release-destroyed-actors</TD></TR>
+		</TABLE>>]
+
+	as_end [shape=point]
+
+	// ////////////////////////////////////////////////
+	// Actor Data Flow
+	// ////////////////////////////////////////////////
+
+	// ///////////
+	// Entry Flows
+	// ///////////
+
+	// Entry flow: Newly created components
+	subgraph cluster_spawn_requests {
+		label="";
+		func_spawn -> areq_spawn 	
+		areq_spawn -> proc_areq_spawn 
+			[dir=both; arrowhead=dot; arrowtail=dot]
+	}
+
+	// Entry flow: Enable Requests
+	subgraph cluster_enable_requests {
+		label="";
+		func_enable_actor -> areq_enable
+		areq_enable -> proc_areq_enable 
+			[dir=both; arrowhead=dot; arrowtail=dot]
+	}
+
+	// Entry flow: Disable Requests
+	subgraph cluster_disable_requests {
+		label="";
+		func_disable_actor -> areq_disable
+		areq_disable -> proc_areq_disable 
+			[dir=both; arrowhead=dot; arrowtail=dot]
+	}
+
+	// Entry flow: Reparent Requests
+	subgraph cluster_reparent_requests {
+		label="";
+		func_reparent_actor -> areq_reparent
+		areq_reparent -> as_reparenting
+			[dir=both; arrowhead=dot; arrowtail=dot]
+	}
+
+
+	// ///////////
+	// Roots of Actor DataFlow
+	// ///////////
+
+	proc_areq_spawn -> as_spawning
+		[label=<Afs-000[0] &epsilon;>]
+
+	proc_areq_enable -> as_enabling
+		[label=<Afs-001[0] &epsilon;>]
+
+	proc_areq_disable -> as_disabling
+		[label=<Afs-002[0] &epsilon;>]
+
+	// ///////////
+	// Actor Initializing
+	// ///////////
+
+	as_spawning -> as_universe_parent
+		[label=<Afs-003[0] &epsilon;>]
+
+	// ///////////
+	// Actor Universe Parent
+	// ///////////
+
+	as_universe_parent -> as_reparenting
+		[label=<Afs-007[0] &epsilon;>]
+
+	// ///////////
+	// Actor Reparenting
+	// ///////////
+
+	as_reparenting -> as_enabling
+		[label=<Afs-005[0] enabled-p <B>T</B>>]
+	as_reparenting -> as_inactive
+		[label=<Afs-005[1] enabled-p <B>NIL</B>>]
+
+	// ///////////
+	// Actor Dying
+	// ///////////
+
+	as_dying -> as_dead
+		[label="Afs-015[0] &epsilon;"]
+
+	// ///////////
+	// Actor Dead
+	// ///////////
+
+	as_dead -> as_unparenting
+		[label="Afs-017[0] &epsilon;"]
+
+	// ///////////
+	// Actor Unparenting
+	// ///////////
+
+	as_unparenting -> as_destroying
+		[label="Afs-019[0] &epsilon;"]
+
+	// ///////////
+	// Actor Destroying
+	// ///////////
+
+	as_destroying -> as_end
+		[label="Afs-020[0] Dropped All FL Refs to Actor"]
+
+	// ///////////
+	// Actor Enabling
+	// ///////////
+
+	as_enabling -> as_active
+		[label="Afs-009[0] &epsilon;"]
+
+	// ///////////
+	// Actor Disabling
+	// ///////////
+
+	as_disabling -> as_inactive
+		[label="Afs-012[0] &epsilon;"]
+
+	// ///////////
+	// Actor Active
+	// ///////////
+
+	as_active -> as_disabling
+		[label="Afs-011[0] ttl <= 0"]
+
+	// ///////////
+	// Actor Inactive
+	// ///////////
+
+	as_inactive -> as_dying
+		[label="Afs-013[0] ttl <= 0"]
+}

@@ -1,0 +1,26 @@
+The Actor/Component Flow Refactor
+
+Problem:
+
+The current actor/component flow is missing desired user protocol functions
+and has missing functionality and errors with the current implementation.
+One error for example is if you create a new component in the
+on-component-initialize method, it will be forgotten about by the system
+and ignored.
+
+Actor State Machine:
+
+
+Components State Machine:
+
+A component will go through this state machine
+
+on-component-initialize
+on-component-attach
+on-component-enable
+on-component-physics-update
+on-component-update
+on-component-disable
+on-component-detach
+on-component-destroy
+

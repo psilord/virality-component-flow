@@ -1,0 +1,41 @@
+(declare-const Afs_000 Int)
+(declare-const Afs_001 Int)
+(declare-const Afs_002 Int)
+(declare-const Afs_003 Int)
+(declare-const Afs_004 Int)
+(declare-const Afs_005 Int)
+(declare-const Afs_006 Int)
+(declare-const Afs_007 Int)
+(declare-const Afs_008 Int)
+(declare-const Afs_009 Int)
+(declare-const Afs_010 Int)
+(declare-const Afs_011 Int)
+(declare-const Afs_012 Int)
+(declare-const Afs_013 Int)
+(declare-const Afs_014 Int)
+(declare-const Afs_015 Int)
+(declare-const Afs_016 Int)
+(declare-const Afs_017 Int)
+(declare-const Afs_018 Int)
+(declare-const Afs_019 Int)
+(declare-const Afs_020 Int)
+(declare-const Afs_021 Int)
+
+(assert (>= Afs_000 0))
+(assert (>= Afs_001 0))
+(assert (>= Afs_002 0))
+(assert (>= Afs_003 0))
+
+(assert (!= Afs_000 Afs_001))
+(assert (!= Afs_000 Afs_002))
+(assert (!= Afs_000 Afs_003))
+
+
+(assert (< Afs_001 Afs_008))
+
+(assert (< Afs_001 Afs_009))
+
+(assert (> Afs_008 Afs_009))
+
+(check-sat)
+(get-model)

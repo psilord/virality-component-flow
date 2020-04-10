@@ -1,0 +1,396 @@
+digraph G {
+	label = "Component Data Flow";
+	labelloc = top;
+	fontsize=30;
+
+	// Notes:
+	// 'b-' means dataflow state that is not a component state.
+	// 'c-' means dataflow state that is also a component state.
+	//
+	// Single line octagon states are always transitory states each frame.
+	// Double line octagon states can hold components across frames.
+
+	// user API: functions that insert requests into the boxes 
+	// to be processed NEXT frame.
+	func_make_comp [shape=oval label="make-component";
+					color=lightgrey style=filled]
+	func_detach_comp [shape=oval label="detach-component";
+						color=lightgrey style=filled]
+	func_attach_comp [shape=oval label="attach-component";
+						color=lightgrey style=filled]
+	func_enable_comp [shape=oval label="enable-component";
+						color=lightgrey style=filled]
+	func_disable_comp [shape=oval label="disable-component";
+						color=lightgrey style=filled]
+
+	// The "Process State label" is the state of the component when it is being
+	// chosen for processing in the process_* routing fs state. Not the state
+	// of the component when it is inserted into the request set.  This is
+	// because the component will likely move around a while before those
+	// requests are handled and by then things might be ok.  If not, then we
+	// error. Sadly, this is a little after the fact, but a consequence of the
+	// state machine-like behavior of the dataflow and subsequent flow-states
+	// in the engine.
+
+	// The folder shape means a "datastore of request objs"
+
+	// new components requested to be handled
+	creq_create [shape=folder; margin=0; 
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>creq_create</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Processing State</TD></TR>
+			// NOTE: make-instance sets STATE to :created, but we don't have
+			// a true state to represent this.
+			<TR><TD ALIGN="LEFT"><B>c-:created</B> [accept]</TD></TR>
+		</TABLE>>]
+
+	// deatch requests
+	creq_detach [shape=folder; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>creq_detach</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Processing State</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>c-:active</B> [accept]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>c-:inactive</B> [accept]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>c-:detached</B> [nop]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>c-:released</B> [error]</TD></TR>
+		</TABLE>>]
+
+
+	// attach requests
+	creq_attach [shape=folder; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>creq_attach</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Processing State</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>c-:detached</B> [accept]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>c-:active</B> [nop]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>c-:inactive</B> [nop]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>c-:released</B> [error]</TD></TR>
+		</TABLE>>]
+
+	// enable requests
+	creq_enable [shape=folder; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>creq_enable</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Processing State</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>c-:inactive</B> [accept]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>c-:active</B> [nop]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>c-:detached</B> [error]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>c-:released</B> [error]</TD></TR>
+		</TABLE>>]
+
+	// disable requests
+	creq_disable [shape=folder; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>creq_disable</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Processing State</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>c-:active</B> [accept]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>c-:inactive</B> [nop]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>c-:detached</B> [error]</TD></TR>
+			<TR><TD ALIGN="LEFT"><B>c-:released</B> [error]</TD></TR>
+		</TABLE>>]
+
+
+	// Process states take requests, validate them, and shove them into the
+	// dataflow.
+
+	// box means a flow state that "process the associated requests"
+	proc_creq_create
+		[shape=box;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>b-:process_creq_create</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Cfs-000: route-created-components</TD></TR>
+		</TABLE>>]
+
+	proc_creq_detach
+		[shape=box;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>b-:process_creq_detach</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Cfs-001: route-detached-components</TD></TR>
+		</TABLE>>]
+
+	proc_creq_attach
+		[shape=box;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>b-:process_creq_attach</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Cfs-002: route-attaching-components</TD></TR>
+		</TABLE>>]
+
+	proc_creq_enable
+		[shape=box;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>b-:process_creq_enable</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Cfs-003: set-enable-p <B>T</B></TD></TR>
+			<TR><TD ALIGN="LEFT">Cfs-004: route-enabling-components</TD></TR>
+		</TABLE>>]
+	
+	proc_creq_disable
+		[shape=box;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>b-:process_creq_disable</B></TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Cfs-005: set-enable-p <B>NIL</B></TD></TR>
+			<TR><TD ALIGN="LEFT">Cfs-006: route-disabling-components</TD></TR>
+		</TABLE>>]
+
+
+	// Component states alter the component state slot to contain the name of
+	// the state. These states do piles of work on the components themselves.
+
+	// Component States
+	cs_initializing
+		[shape=octagon; margin = 0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>c-:initializing</B> [type table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Cfs-007: protocol/<I>on-component-initialize</I></TD></TR>
+			<TR><TD ALIGN="LEFT">Cfs-008: route-initialized-components</TD></TR>
+		</TABLE>>]
+
+	cs_detaching
+		[shape=octagon; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>c-:detaching</B> [type table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Cfs-009: protocol/<I>on-component-detach</I></TD></TR>
+			<TR><TD ALIGN="LEFT">Cfs-010: actually-detach-components</TD></TR>
+			<TR><TD ALIGN="LEFT">Cfs-011: route-detached-components</TD></TR>
+		</TABLE>>]
+
+	cs_detached
+		[shape=doubleoctagon; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>c-:detached</B> [view table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Cfs-012: route-detached-destroying-components</TD></TR>
+		</TABLE>>]
+
+
+	cs_attaching
+		[shape=octagon; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>c-:attaching</B> [type table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Cfs-013: actually-connect-components</TD></TR>
+			<TR><TD ALIGN="LEFT">Cfs-014: invoke/attachment-thunks</TD></TR>
+			<TR><TD ALIGN="LEFT">Cfs-015: protocol/<I>on-component-attach</I></TD></TR>
+			<TR><TD ALIGN="LEFT">Cfs-016: route-attached-components</TD></TR>
+		</TABLE>>]
+
+
+	cs_enabling
+		[shape=octagon; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>c-:enabling</B> [type table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Cfs-017: protocol/<I>on-component-enable</I></TD></TR>
+			<TR><TD ALIGN="LEFT">Cfs-018: route-enabled-components</TD></TR>
+		</TABLE>>]
+
+	cs_disabling
+		[shape=octagon; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>c-:disabling</B> [type table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Cfs-019: protocol/<I>on-component-disable</I></TD></TR>
+			<TR><TD ALIGN="LEFT">Cfs-020: route-disabled-components</TD></TR>
+		</TABLE>>]
+
+	cs_active
+		[shape=doubleoctagon; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>c-:active</B> [type table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Cfs-021: physics-loop</TD></TR>
+			<TR><TD ALIGN="LEFT"><U>Cfs-021-0:</U> <I>on-component-physics-update</I></TD></TR>
+			<TR><TD ALIGN="LEFT"><U>Cfs-021-1:</U> physics-collisions</TD></TR>
+
+			<TR><TD ALIGN="LEFT">Cfs-022: make-active-camera-view</TD></TR>
+
+			<TR><TD ALIGN="LEFT">Cfs-023: protocol/<I>on-component-update</I></TD></TR>
+			<TR><TD ALIGN="LEFT">Cfs-024: <I>on-component-render</I></TD></TR>
+			<TR><TD ALIGN="LEFT">Cfs-025: decr-ttl-if-real-number</TD></TR>
+			<TR><TD ALIGN="LEFT">Cfs-026: route-active-destroying-components</TD></TR>
+		</TABLE>>]
+
+	cs_inactive
+		[shape=doubleoctagon; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>c-:inactive</B> [view table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Cfs-027: route-inactive-destroying-components</TD></TR>
+		</TABLE>>]
+
+	cs_destroying
+		[shape=octagon; margin=0;
+		label=<
+		<TABLE CELLBORDER="0">
+			<TR><TD><B>c-:destroying</B> [type table]</TD></TR>
+			<HR/>
+			<TR><TD ALIGN="LEFT">Cfs-028: protocol/<I>on-component-destroy</I></TD></TR>
+			<TR><TD ALIGN="LEFT">Cfs-029: release-destroyed-components</TD></TR>
+		</TABLE>>]
+
+	cs_end [shape=point]
+
+
+	// ////////////////////////////////////////////////
+	// Component Data Flow
+	// ////////////////////////////////////////////////
+
+	// ///////////
+	// Entry Flows
+	// ///////////
+
+	// Entry flow: Newly created components
+	subgraph cluster_make_requests {
+		label="";
+		func_make_comp -> creq_create 	
+		creq_create -> proc_creq_create 
+			[dir=both; arrowhead=dot; arrowtail=dot]
+	}
+
+	// Entry flow: Detach Requests
+	subgraph cluster_detach_requests {
+		label="";
+		func_detach_comp -> creq_detach
+		creq_detach -> proc_creq_detach 
+			[dir=both; arrowhead=dot; arrowtail=dot]
+	}
+
+	// Entry flow: Attach Requests
+	subgraph cluster_attach_requests {
+		label="";
+		func_attach_comp -> creq_attach
+		creq_attach -> proc_creq_attach 
+			[dir=both; arrowhead=dot; arrowtail=dot]
+	}
+
+	// Entry flow: Enable Requests
+	subgraph cluster_enable_requests {
+		label="";
+		func_enable_comp; creq_enable proc_creq_enable
+		func_enable_comp -> creq_enable
+		creq_enable -> proc_creq_enable 
+			[dir=both; arrowhead=dot; arrowtail=dot]
+	}
+
+	// Entry flow: Disable Requests
+	subgraph cluster_disable_requests {
+		label="";
+		func_disable_comp -> creq_disable
+		creq_disable -> proc_creq_disable 
+			[dir=both; arrowhead=dot; arrowtail=dot]
+	}
+
+
+	// ///////////
+	// Roots of Component DataFlow
+	// ///////////
+
+	proc_creq_create -> cs_initializing
+		[label=<Cfs-000[0] &epsilon;>]
+
+	proc_creq_detach -> cs_detaching
+		[label=<Cfs-001[0] &epsilon;>]
+
+	proc_creq_attach -> cs_attaching
+		[label=<Cfs-002[0] &epsilon;>]
+
+	proc_creq_enable -> cs_enabling
+		[label=<Cfs-004[0] &epsilon;>]
+
+	proc_creq_disable -> cs_disabling
+		[label=<Cfs-006[0] &epsilon;>]
+
+	// ///////////
+	// Component Initializing
+	// ///////////
+
+	cs_initializing -> cs_detached
+		[label=<Cfs-008[0] &epsilon;>]
+
+	// ///////////
+	// Component Detaching
+	// ///////////
+
+	cs_detaching -> cs_detached
+		[label=<Cfs-011[0] &epsilon;>]
+
+	// ///////////
+	// Component Detached
+	// ///////////
+
+	cs_detached -> cs_destroying
+		[label="Cfs-012[0] ttl <= 0"]
+
+	// ///////////
+	// Component Destroying
+	// ///////////
+
+	cs_destroying -> cs_end
+		[label="Cfs-029[0] Dropped All FL Refs to Component"]
+
+	// ///////////
+	// Component Attaching
+	// ///////////
+
+	cs_attaching -> cs_enabling 
+		[label=<Cfs-016[0] enabled-p <B>T</B>>]
+	cs_attaching -> cs_inactive
+		[label=<Cfs-016[1] enabled-p <B>NIL</B>>]
+
+	// ///////////
+	// Component Enabling
+	// ///////////
+
+	cs_enabling -> cs_active
+		[label="Cfs-018[0] &epsilon;"]
+
+	// ///////////
+	// Component Disabling
+	// ///////////
+
+	cs_disabling -> cs_inactive
+		[label="Cfs-020[0] &epsilon;"]
+
+	// ///////////
+	// Component Active
+	// ///////////
+
+	cs_active -> cs_disabling
+		[label="Cfs-027[0] ttl <= 0"]
+
+	// ///////////
+	// Component Inactive
+	// ///////////
+
+	cs_inactive -> cs_detaching
+		[label="Cfs-027[0] ttl <= 0"]
+}
