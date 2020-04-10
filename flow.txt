@@ -1,0 +1,184 @@
+Component Flow Discussion: 2020-04-09: Bart, Mike, Jack, Peter
+
+1. The flow representation (define-flow, etc) DSL should be hacked upon to make
+it more amenable for manipulation by the gamedev and possibly at runtime.
+Currently it is a little hard to understand and requires some hardcoded
+knowledge about the states and their backing data structures.
+
+Mike: The flows are large and hard to understand, can it be reimagined to be
+easier to learn, manage, maintain, and manipulate. Try to fix the syntax such
+that M-. works when moving between states. Navigation is very difficult
+currently.
+
+Pete: I'm interested in allowing the gamedev access to the component flow so
+they can add new states, move things around, have different flows for different
+reasons, add new protocol methods if desired, etc, etc, etc.
+
+Bart: No general comments about define-flow DSL at this time.
+
+Jack & Pete: Ensure stable and defined behavior for all components and actors,
+especially with things like collision handling and actors getting enabled and
+disabled. Don't repeat Unity/Unreal's semantic problems with their flows.
+
+NOTE: The representation of the DSL is generally orthogonal to the behavior
+of its internals and can be hacked upon seperately.
+
+NOTE: Should we complete the Graph DSL and use THAT to represent the flows and
+their states? The Graph DSL is a chunk of work, but isolated.
+
+
+2. The protocols:
+
+Component Protocol
+------------------
+# record on-component-pre-render when we get here. Maybe multiple methods that
+# somehow get sorted?
+
+enterable state looks like: <collision system, networking, audio, etc>
+# The gamedev "uses" a enterable state by implementing this protocol for their
+# component. THe gmedev could supply an ordering for the dispatch calls.
+# Example for the collider. (See Notes)
+(on-enter :collision (self collider) <enterable-descriptor>)
+
+(on-continue :collision (self collider) <enterable-descriptor>)
+(on-exit :collision (self collider) <enterable-descriptor>)
+
+
+# protocol methods
+make-component
+<make-instance>
+<reinitialize-instance> (set prefab information)
+on-component-initialize
+on-component-attach
+on-component-enable
+<enter enterable states>
+<stay in enterable states>
+on-component-update
+on-component-physics-update
+
+
+# REALLY IMPORTANT to manage. Gamedev somehow gets this into the Engine.
+# We are going to make our own method qualifiers.
+# Don't allow gamedev to call this at runtime!
+# Get put into the example boiler plate code that the "make-project" call makes.
+# This is probably a macro which generates the CL necesary to add
+# quaifiers to the specified methods.
+# User may have to restart image when changing this.
+# Don't break :before/:after stuff for this.
+#
+# NOTE: When we want to call this method, the FLOWS know to call the :pre
+# version first across the typedag, THEN the :default is invoked across
+# the typedag
+(define-protocol-hook-order v:on-component-render (:pre :default :post))
+
+# Maybe make our own dispatch function? (Which doesn't break :before/:after)
+# Possibly convert to defprotocol and we can control it ourselves.
+(defmethod v:on-component-render :pre (self component)
+  nil)
+
+(defmethod v:on-component-render :default (self component)
+  nil)
+
+(defmethod v:on-component-render :post (self component)
+  nil)
+
+
+
+# First, run this on ALL components (that define this method)
+(defmethod v:on-component-disable :pre (self component)
+  nil)
+
+# Then, (in the flows) run this on ALL component (that define this method)
+(defmethod v:on-component-disable :default (self component)
+  nil)
+
+
+on-component-disable
+<exit enterable states>
+on-component-update-when-disabled
+on-component-physics-update-when-disabled
+on-component-detach
+on-component-destroy
+
+Component Semantic Constraint Rules
+-----------------------------------
+Any created actors/components should all enter the scene tree before the frame.
+
+
+Component Dependency Constraint Rules
+-------------------------------------
+TODO
+
+
+Actor Protocol
+--------------
+
+make-actor
+on-actor-enable
+on-actor-disable
+on-actor-destroy
+
+TODO
+
+
+
+Prefab Connection
+-----------------
+TODO
+
+
+
+
+NOTES
+-----
+
+Enterable States:
+[tentative to control orering of protocol methods independent of the typedaag]
+
+If the enterable protocol was made its own dispatch system, we could do things
+like:
+
+(defmethod on-collision-enter :collision (a b c d) ...)
+(defmethod on-audio-enter :audio (a b c d) ..))
+
+and then tell the MOP that when entering the enterable states, we must call
+the methods like:
+
+Enter -> (:collision :audio)
+Stay -> (:collision :audio)
+Enter -> (:audio :collision)
+
+# possible idea for enterable protocol (think about read/write/exception
+# callbacks for networking, and other enterable states that might notify
+# us of things beyonf the simple collision example.
+
+(defmethod on-enter :collision ((self collider) enterable-context))
+(defmethod on-continue :collision ((self collider) enterable-context))
+(defmethod on-exit :collision ((self collider) enterable-context))
+
+Keyword dispatch symbols are reserved for Virality. Otherwise could be
+symbols used in contrib modules.
+
+Threading:
+Use it in MINIMAL cases where it is clearly useful (network, audio,
+file loading, etc) and in general, don't provide any threading interface to
+the gamedev. Use it in the deeper layers.
+
+
+CLOS Filter dispatch system:
+  Can help us design the Component Protocol.
+  Inspect performance of it too, can we use it gradually?
+  Michael Fiano suggests:
+    http://www.p-cos.net/documents/filtered-dispatch.pdf
+    https://github.com/pcostanza/filtered-functions
+
+
+Think about passing a reason for why the component protocol is being invoked,
+like, should a disable KNOW it is being called due to its actor being disabled
+or just because disable was called by some other component?
+
+
+To help test all of this stuff, write a component that can be used to stress
+test the engine by slowly increasing the number of actors with colliders
+and/or other features that use the engine. As time progressing, it adds more
+stress and we can watch a profile of the engine to see what happens.
