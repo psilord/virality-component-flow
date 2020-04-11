@@ -29,6 +29,11 @@ their states? The Graph DSL is a chunk of work, but isolated.
 
 2. The protocols:
 
+
+[current state] -> (requests) => [next state]
+
+
+
 Component Protocol
 ------------------
 # record on-component-pre-render when we get here. Maybe multiple methods that
@@ -113,14 +118,34 @@ TODO
 Actor Protocol
 --------------
 
+<user API>
+
 make-actor
-on-actor-enable
-on-actor-disable
-on-actor-destroy
+spawn-actor
+set-parent (not currently implemented)
+destroy (for actors and components)
 
-TODO
-
-
+;; Notes from mfiano:
+;; When destroying an ACTOR, we have a lot of complex things we may want to do.
+;; We should discuss whether or not we want each of these on a case-by-case
+;; basi. This is a non-exhaustive list so far:
+;;
+;; 1) When an actor is ACTUALLY destroyed, delete the children sub-tree of that
+;; actor entirely.
+;;
+;; 2) When an actor is ACTUALLY destroyed, reparent its children as direct
+;; children of its parent.
+;;
+;; 3) During predestroy, if an actor spawned a new child, allow user to specify
+;; if that new actor is destroyed or not during case #1 above.
+;;
+;; 4) During the TTL (before predestroy state), if an actor spawned a new child,
+;; allow user to specify that new actor is destroyed or not during case #1
+;; above.
+;;
+;; 5) When an actor is ACTUALLY destroyed, leave it's children sub-tree as a
+;; floating sub-tree that is not connected to the scene tree anymore, but is
+;; possible for the user to splice it in somewhere later.
 
 Prefab Connection
 -----------------
@@ -182,3 +207,47 @@ To help test all of this stuff, write a component that can be used to stress
 test the engine by slowly increasing the number of actors with colliders
 and/or other features that use the engine. As time progressing, it adds more
 stress and we can watch a profile of the engine to see what happens.
+
+
+
+Jack: How do we deal with this situation:
+1. destroy component (ttl <- 0)
+2. moves to disable.
+3. on-component-disable makes a request to re-enable self.
+3. moves to detach because (ttl is still 0)
+4. on-component-detach sets ttl to NIL
+5. component stays in detached instead of being destroyed.
+6. Now there is a "enable component" request to process, but the component has
+   been disconnected from the actor, what do we do?
+
+---
+
+1. broadcast a "phase change" of :on-will-destroy to an actor (and desc)
+2. gamedev put a hook in for (on-component-phase-change :on-will-destroy) and
+   executes whatever code is required for this phase change.
+3. destroy walks through its standard provess of destroying actors, components,
+   and all children. Suppose we make it down to detached for a component.
+4. on-component-detach changes ttl to nil or greater than zero.
+5. ?? What happens ?? What do we do?
+6. Do we somehow detect we're being destroyed and prevent the TTL function
+   from altering the ttl? Like, TTL notices the states and prevents/allows it.
+
+Pete suggests to fix the above problems (and probably others):
+"If TTL EVER goes to zero, that is automatically the crossing of
+the event horizon into destruction and the TTL accessor refuses to change it
+away from 0 forever." Maybe (setf TTL) returns a values of the ttl and if it
+was modifiable.
+
+
+Jack: How can we determine a request is invalid?
+
+
+Result of meeting: 2020-04-10
+
+async requests (make-actor, make-component, reparent, actor-enable,
+component-disable, etc) are pushed onto a stack/queue with cursors, and when a
+request is processed any new requests generated are pushed at the most relevant
+cursor position.
+
+<end>[cursor][recompilations][cursor][update phase][physics-update phase]...
+.....[cursor][collision detection][physics]<head> <- process here.
