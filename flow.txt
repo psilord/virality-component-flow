@@ -251,3 +251,13 @@ cursor position.
 
 <end>[cursor][recompilations][cursor][update phase][physics-update phase]...
 .....[cursor][collision detection][physics]<head> <- process here.
+
+
+
+Result of meeting: 2020-04-11
+
+Mfiano: If there are twn instances of FOO component, a 5 of them use material
+M, then when M gets recompiled, ONLY THOSE 5 instances should get an
+"on-material-recompile" callback. This implies their are data structures
+or functions that go into components to test if they are applicable to get
+that event.

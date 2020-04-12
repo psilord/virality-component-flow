@@ -6,6 +6,9 @@
   :license  "Specify license here"
   :version "0.0.1"
   :serial t
-  :depends-on (#:alexandria)
+  :depends-on (#:alexandria
+	       #:golden-utils
+	       #:queues
+	       #:doubly-linked-list)
   :components ((:file "package")
                (:file "attempt-1")))
