@@ -342,6 +342,8 @@
       (dll:insert-before dll cur-1 :1-two)
       (emit-dll dll "Queue before Cursor-1: :1-two")
 
+      (format t "There are ~A elements in the dll.~%~%" (dll:length dll))
+
       (format t "Processing dll like a queue from head to horizon...~%")
       (format t "  HEAD~%")
       (loop :until (zerop (dll:length dll))
