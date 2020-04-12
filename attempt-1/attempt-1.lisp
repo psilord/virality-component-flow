@@ -304,40 +304,51 @@
 ;; Random testing code.
 
 (defun doit ()
-  (let* ((cur-0 0)
-         (cur-1 1)
-         (dl (make-dlist)))
-    (flet ((emit-dl (edl msg)
-             (format t "dlist: ~A~%~{  ~(~S~)~%~}~%"
+  (let* ((dll (dll:list))
+         ;; Keep track of these nodes for now.
+         (cur-0 nil)
+         (cur-1 nil))
+    (flet ((emit-dll (edl msg)
+             (format t "dlist: ~A~% HEAD~%~{  ~(~S~)~%~} HORIZON~%~%"
                      msg
-                     (dlist-elements edl))))
+                     (dll:list-values edl))))
 
       ;; TODO: I suggest allowing to specify a real dlist node for the
       ;; key, which would then sidestep the O(n) lookup. Then we can
       ;; keep references to the actual cursor dnodes in the dlist
       ;; in the "Request Context". This would vastly increase performance.
 
-      (emit-dl dl "Empty")
 
-      (insert-dlist-node :head dl cur-0 :cursor)
-      (emit-dl dl "Insert :head Cursor-0")
+      (emit-dll dll "Empty")
 
-      (insert-dlist-node :tail dl cur-1 :cursor)
-      (emit-dl dl "Insert :tail Cursor-1")
+      (setf cur-0 (dll:insert-before dll (dll:head dll) '(0 . :cursor)))
+      (emit-dll dll "Insert before :head Cursor-0")
 
-      (insert-dlist-node :before dl :0-zero 0 :target-key cur-0)
-      (emit-dl dl "Queue :before Cursor-0: (:0-zero . 0)")
+      (setf cur-1 (dll:insert-after dll (dll:tail dll) '(1 . :cursor)))
+      (emit-dll dll "Insert after :tail Cursor-1")
 
-      (insert-dlist-node :before dl :0-one 1 :target-key cur-0)
-      (emit-dl dl "Queue :before Cursor-0: (:0-one . 1)")
+      (dll:insert-before dll cur-0 :0-zero)
+      (emit-dll dll "Queue before Cursor-0: :0-zero")
 
-      (insert-dlist-node :before dl :1-zero 0 :target-key cur-1)
-      (emit-dl dl "Queue :before Cursor-1: (:1-zero . 0)")
+      (dll:insert-before dll cur-0 :0-one)
+      (emit-dll dll "Queue before Cursor-0: :0-one")
 
-      (insert-dlist-node :before dl :1-one 1 :target-key cur-1)
-      (emit-dl dl "Queue :before Cursor-1: (:1-one . 1)")
+      (dll:insert-before dll cur-1 :1-zero)
+      (emit-dll dll "Queue before Cursor-1: :1-zero")
 
-      (insert-dlist-node :before dl :1-two 2 :target-key cur-1)
-      (emit-dl dl "Queue :before Cursor-1: (:1-two . 2)")
+      (dll:insert-before dll cur-1 :1-one)
+      (emit-dll dll "Queue before Cursor-1: :1-one")
+
+      (dll:insert-before dll cur-1 :1-two)
+      (emit-dll dll "Queue before Cursor-1: :1-two")
+
+      (format t "Processing dll like a queue from head to horizon...~%")
+      (format t "  HEAD~%")
+      (loop :until (zerop (dll:length dll))
+            :for node = (dll:head dll)
+            :do (dll:delete (dll:head dll) dll)
+                (format t "   Processed node: ~(~S~)~%" node))
+      (format t "  HORIZON~%")
+
 
       )))
