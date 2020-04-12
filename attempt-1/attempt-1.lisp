@@ -320,24 +320,24 @@
       (emit-dl dl "Empty")
 
       (insert-dlist-node :head dl curA t)
-      (emit-dl dl "Insert Cursor A")
+      (emit-dl dl "Insert :head Cursor A")
 
       (insert-dlist-node :tail dl curB t)
-      (emit-dl dl "Insert Cursor B")
+      (emit-dl dl "Insert :tail Cursor B")
 
       (insert-dlist-node :before dl :a-zero 0 :target-key curA)
-      (emit-dl dl "Queue before CursorA: (:a-zero . 0)")
+      (emit-dl dl "Queue :before CursorA: (:a-zero . 0)")
 
       (insert-dlist-node :before dl :a-one 1 :target-key curA)
-      (emit-dl dl "Queue before CursorA: (:a-one . 1)")
+      (emit-dl dl "Queue :before CursorA: (:a-one . 1)")
 
       (insert-dlist-node :before dl :b-zero 0 :target-key curB)
-      (emit-dl dl "Queue before CursorB: (:b-zero . 0)")
+      (emit-dl dl "Queue :before CursorB: (:b-zero . 0)")
 
       (insert-dlist-node :before dl :b-one 1 :target-key curB)
-      (emit-dl dl "Queue before CursorB: (:b-one . 1)")
+      (emit-dl dl "Queue :before CursorB: (:b-one . 1)")
 
       (insert-dlist-node :before dl :b-two 2 :target-key curB)
-      (emit-dl dl "Queue before CursorB: (:b-two . 2)")
+      (emit-dl dl "Queue :before CursorB: (:b-two . 2)")
 
       )))
