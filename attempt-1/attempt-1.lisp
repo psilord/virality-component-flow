@@ -304,11 +304,11 @@
 ;; Random testing code.
 
 (defun doit ()
-  (let* ((curA (gensym "CUR-A-"))
-         (curB (gensym "CUR-B-"))
+  (let* ((cur-0 0)
+         (cur-1 1)
          (dl (make-dlist)))
     (flet ((emit-dl (edl msg)
-             (format t "dlist: ~A~%~{  ~A~%~}~%"
+             (format t "dlist: ~A~%~{  ~(~S~)~%~}~%"
                      msg
                      (dlist-elements edl))))
 
@@ -319,25 +319,25 @@
 
       (emit-dl dl "Empty")
 
-      (insert-dlist-node :head dl curA t)
-      (emit-dl dl "Insert :head Cursor A")
+      (insert-dlist-node :head dl cur-0 :cursor)
+      (emit-dl dl "Insert :head Cursor 0")
 
-      (insert-dlist-node :tail dl curB t)
-      (emit-dl dl "Insert :tail Cursor B")
+      (insert-dlist-node :tail dl cur-1 :cursor)
+      (emit-dl dl "Insert :tail Cursor 1")
 
-      (insert-dlist-node :before dl :a-zero 0 :target-key curA)
-      (emit-dl dl "Queue :before CursorA: (:a-zero . 0)")
+      (insert-dlist-node :before dl :0-zero 0 :target-key cur-0)
+      (emit-dl dl "Queue :before CursorA: (:0-zero . 0)")
 
-      (insert-dlist-node :before dl :a-one 1 :target-key curA)
-      (emit-dl dl "Queue :before CursorA: (:a-one . 1)")
+      (insert-dlist-node :before dl :0-one 1 :target-key cur-0)
+      (emit-dl dl "Queue :before CursorA: (:0-one . 1)")
 
-      (insert-dlist-node :before dl :b-zero 0 :target-key curB)
-      (emit-dl dl "Queue :before CursorB: (:b-zero . 0)")
+      (insert-dlist-node :before dl :1-zero 0 :target-key cur-1)
+      (emit-dl dl "Queue :before CursorB: (:1-zero . 0)")
 
-      (insert-dlist-node :before dl :b-one 1 :target-key curB)
-      (emit-dl dl "Queue :before CursorB: (:b-one . 1)")
+      (insert-dlist-node :before dl :1-one 1 :target-key cur-1)
+      (emit-dl dl "Queue :before CursorB: (:1-one . 1)")
 
-      (insert-dlist-node :before dl :b-two 2 :target-key curB)
-      (emit-dl dl "Queue :before CursorB: (:b-two . 2)")
+      (insert-dlist-node :before dl :1-two 2 :target-key cur-1)
+      (emit-dl dl "Queue :before CursorB: (:1-two . 2)")
 
       )))
