@@ -313,11 +313,7 @@
                      msg
                      (dll:list-values edl))))
 
-      ;; TODO: I suggest allowing to specify a real dlist node for the
-      ;; key, which would then sidestep the O(n) lookup. Then we can
-      ;; keep references to the actual cursor dnodes in the dlist
-      ;; in the "Request Context". This would vastly increase performance.
-
+      ;; TODO: Cursors should be held in a hash table for easy access in quack.
 
       (emit-dll dll "Empty")
 
