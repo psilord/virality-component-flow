@@ -299,3 +299,45 @@
 
 (defmethod destroy ((self actor))
   nil)
+
+;; -----------------------------------------------------------------------
+;; Random testing code.
+
+(defun doit ()
+  (let* ((curA (gensym "CUR-A-"))
+         (curB (gensym "CUR-B-"))
+         (dl (make-dlist)))
+    (flet ((emit-dl (edl msg)
+             (format t "dlist: ~A~%~{  ~A~%~}~%"
+                     msg
+                     (dlist-elements edl))))
+
+      ;; TODO: I suggest allowing to specify a real dlist node for the
+      ;; key, which would then sidestep the O(n) lookup. Then we can
+      ;; keep references to the actual cursor dnodes in the dlist
+      ;; in the "Request Context". This would vastly increase performance.
+
+      (emit-dl dl "Empty")
+
+      (insert-dlist-node :head dl curA t)
+      (emit-dl dl "Insert Cursor A")
+
+      (insert-dlist-node :tail dl curB t)
+      (emit-dl dl "Insert Cursor B")
+
+      (insert-dlist-node :before dl :a-zero 0 :target-key curA)
+      (emit-dl dl "Queue before CursorA: (:a-zero . 0)")
+
+      (insert-dlist-node :before dl :a-one 1 :target-key curA)
+      (emit-dl dl "Queue before CursorA: (:a-one . 1)")
+
+      (insert-dlist-node :before dl :b-zero 0 :target-key curB)
+      (emit-dl dl "Queue before CursorB: (:b-zero . 0)")
+
+      (insert-dlist-node :before dl :b-one 1 :target-key curB)
+      (emit-dl dl "Queue before CursorB: (:b-one . 1)")
+
+      (insert-dlist-node :before dl :b-two 2 :target-key curB)
+      (emit-dl dl "Queue before CursorB: (:b-two . 2)")
+
+      )))
