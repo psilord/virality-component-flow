@@ -320,24 +320,24 @@
       (emit-dl dl "Empty")
 
       (insert-dlist-node :head dl cur-0 :cursor)
-      (emit-dl dl "Insert :head Cursor 0")
+      (emit-dl dl "Insert :head Cursor-0")
 
       (insert-dlist-node :tail dl cur-1 :cursor)
-      (emit-dl dl "Insert :tail Cursor 1")
+      (emit-dl dl "Insert :tail Cursor-1")
 
       (insert-dlist-node :before dl :0-zero 0 :target-key cur-0)
-      (emit-dl dl "Queue :before CursorA: (:0-zero . 0)")
+      (emit-dl dl "Queue :before Cursor-0: (:0-zero . 0)")
 
       (insert-dlist-node :before dl :0-one 1 :target-key cur-0)
-      (emit-dl dl "Queue :before CursorA: (:0-one . 1)")
+      (emit-dl dl "Queue :before Cursor-0: (:0-one . 1)")
 
       (insert-dlist-node :before dl :1-zero 0 :target-key cur-1)
-      (emit-dl dl "Queue :before CursorB: (:1-zero . 0)")
+      (emit-dl dl "Queue :before Cursor-1: (:1-zero . 0)")
 
       (insert-dlist-node :before dl :1-one 1 :target-key cur-1)
-      (emit-dl dl "Queue :before CursorB: (:1-one . 1)")
+      (emit-dl dl "Queue :before Cursor-1: (:1-one . 1)")
 
       (insert-dlist-node :before dl :1-two 2 :target-key cur-1)
-      (emit-dl dl "Queue :before CursorB: (:1-two . 2)")
+      (emit-dl dl "Queue :before Cursor-1: (:1-two . 2)")
 
       )))
