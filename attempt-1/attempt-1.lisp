@@ -304,7 +304,7 @@
 ;; Random testing code.
 
 (defun doit ()
-  (let* ((dll (dll:list))
+  (let* ((dll (dll:make-list))
          ;; Keep track of these nodes for now.
          (cur-0 nil)
          (cur-1 nil))
@@ -317,25 +317,26 @@
 
       (emit-dll dll "Empty")
 
-      (setf cur-0 (dll:insert-before dll (dll:head dll) '(0 . :cursor)))
+      (setf cur-0 (dll:insert dll '(0 . :cursor) :where :before))
       (emit-dll dll "Insert before :head Cursor-0")
 
-      (setf cur-1 (dll:insert-after dll (dll:tail dll) '(1 . :cursor)))
+      (setf cur-1 (dll:insert dll '(1 . :cursor) :where :after
+                                                 :target (dll:tail dll)))
       (emit-dll dll "Insert after :tail Cursor-1")
 
-      (dll:insert-before dll cur-0 :0-zero)
+      (dll:insert dll :0-zero :where :before :target cur-0)
       (emit-dll dll "Queue before Cursor-0: :0-zero")
 
-      (dll:insert-before dll cur-0 :0-one)
+      (dll:insert dll :0-one :where :before :target cur-0)
       (emit-dll dll "Queue before Cursor-0: :0-one")
 
-      (dll:insert-before dll cur-1 :1-zero)
+      (dll:insert dll :1-zero :where :before :target cur-1)
       (emit-dll dll "Queue before Cursor-1: :1-zero")
 
-      (dll:insert-before dll cur-1 :1-one)
+      (dll:insert dll :1-one :where :before :target cur-1)
       (emit-dll dll "Queue before Cursor-1: :1-one")
 
-      (dll:insert-before dll cur-1 :1-two)
+      (dll:insert dll :1-two :where :before :target cur-1)
       (emit-dll dll "Queue before Cursor-1: :1-two")
 
       (format t "There are ~A elements in the dll.~%~%" (dll:length dll))
@@ -344,7 +345,7 @@
       (format t "  HEAD~%")
       (loop :until (zerop (dll:length dll))
             :for node = (dll:head dll)
-            :do (dll:delete (dll:head dll) dll)
+            :do (dll:delete dll (dll:head dll))
                 (format t "   Processed node: ~(~S~)~%" node))
       (format t "  HORIZON~%")
 
