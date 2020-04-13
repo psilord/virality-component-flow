@@ -342,12 +342,13 @@
       (format t "There are ~A elements in the dll.~%~%" (dll:length dll))
 
       (format t "Processing dll like a queue from head to horizon...~%")
-      (format t "  HEAD~%")
+      (format t "  AT HEAD~%")
       (loop :until (zerop (dll:length dll))
             :for node = (dll:head dll)
+	    :for idx :from 0
             :do (dll:delete dll (dll:head dll))
-                (format t "   Processed node: ~(~S~)~%" node))
-      (format t "  HORIZON~%")
+                (format t "   Processed node: [~A]: ~(~S~)~%" idx node))
+      (format t "  AT HORIZON~%")
 
 
       )))
