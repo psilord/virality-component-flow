@@ -303,6 +303,10 @@
 ;; -----------------------------------------------------------------------
 ;; Random testing code.
 
+;; NOTICE: An operation has a scope about who it is going to affect (an actor
+;; and it components and it descendants recursively (in typedag order) OR *all*
+;; components in typedag order) _and_ operations are themselves ordered.
+
 (defun doit ()
   (let* ((dll (dll:make-list))
          ;; Keep track of these nodes for now.
