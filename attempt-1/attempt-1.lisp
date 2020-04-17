@@ -260,6 +260,19 @@
 ;; Implement a bundle with sorting on the phases.
 ;; Define the semantics and concrete understanding of _Domains_.
 ;; ENsure ordering between operations is what we believe we need.
+;;
+;; <psilord> Wow! I just realized we can build a gdb like interface for
+;;	  quack. Like, you can next over an operation, or step into one and
+;;	  watch it call the bundles on all the components, etc, etc,
+;;	  etc. "break on any phase emitting an disable" "break when attempting
+;;	  to enable >this< actor.   [01:09]
+;;
+;; <psilord> Theoretically, we can have an honest to god interrupt vector
+;; 	  specification. Like, if ops failed to execute (in a BAD way), then
+;; 	  call this user function that isn't a part of any actor or component.
+;;								        [01:12]
+
+
 
 ;; NOTE: make cursor pool so we can reuse them without GC as much.
 
