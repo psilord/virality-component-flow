@@ -24,9 +24,9 @@
 
 (defclass actor (kernel)
   ((%components :reader components
-                :initform (u:dict))
+                :initform (u:dict #'eq))
    (%components-by-type :reader %components-by-type
-                        :initform (u:dict))))
+                        :initform (u:dict #'eq))))
 
 (defclass component (kernel)
   ((%type :reader component-type
@@ -58,213 +58,421 @@
 
 ;; -----------------------------------------------------------------------
 
-(defclass request ()
+(defclass cursor-context ()
+  ((%cursors :accessor cursors
+             :initarg :cursors
+             ;; key is keyword symbol, value is dlist cursor node.
+             :initform (u:dict #'eq))))
+
+(u:define-printer (cursor-context strm)
+  (format strm "~(~S~)" (u:hash->plist (cursors cursor-context))))
+
+(defun make-cursor-context (&rest cursors)
+  ;; op-cursors are nodes (in some data structure) containing op/cursor
+  ;; instances.
+  (let ((ctx (make-instance 'cursor-context)))
+    ;; TODO: A HACK to define a known cursor API, this must be made true later
+    (setf (u:href (cursors ctx) :continuation) (first cursors))
+
+    (dolist (cursor cursors)
+      (setf (u:href (cursors ctx) (name cursor)) cursor))
+    ctx))
+
+(defun lookup-cursor (cursor-context name)
+  (u:href (cursors cursor-context) name))
+
+(defun add-cursor (cursor-context cursor)
+  (setf (u:href (cursors cursor-context) (name cursor)) cursor))
+
+(defun remove-cursor (cursor-context cursor)
+  (remhash (name cursor) (cursors cursor-context)))
+
+
+(defclass op ()
+  ((%domain :accessor domain
+            :initarg :domain)
+   (%cursor-context :accessor cursor-context
+                    :initarg :cursor-context
+                    :initform nil)))
+(defun op-p (op)
+  (typep op 'op))
+
+(defclass op/cursor (op)
+  ((%location :accessor location
+              :initarg :location)
+   (%name :reader name
+          :initarg :name)))
+(defun op/cursor-p (op)
+  (typep op 'op/cursor))
+
+
+(u:define-printer (op/cursor strm)
+  (format strm "~(~S~)" (name op/cursor)))
+
+(defclass op/compute-physics (op)
   ((%data :accessor data
-          :initarg :data
-          :initform (gensym "REQ-"))))
+          :initarg :data)))
+(defun op/compute-physics-p (op)
+  (typep op 'op/compute-physics))
 
-(defclass request/cursor (request) ())
-(defclass request/t0 (request) ())
-(defclass request/t1 (request) ())
-(defclass request/t2 (request) ())
+(defclass op/compute-and-emit-collisions (op)
+  ((%data :accessor data
+          :initarg :data)))
+(defun op/compute-and-emit-collisions (op)
+  (typep op 'op/compute-and-emit-collisions))
 
-(defclass request/make-component (request)
-  ((%component :accessor component
-               :initarg :component
-               :initform nil)
-   (%initializer-factory :accessor initializer-factory
-                         :initarg :initializer-factory
-                         :initform (constantly nil))))
+(defclass op/physics-update (op)
+  ((%data :accessor data
+          :initarg :data)))
+(defun op/physics-update-p (op)
+  (typep op 'op/physics-update))
 
-(defun make-request-factory (request-type &rest args)
-  (apply #'make-instance request-type args))
+(defclass op/update (op)
+  ((%data :accessor data
+          :initarg :data)))
+(defun op/update-p (op)
+  (typep op 'op/update))
 
-;; Next time: Make some SIMPLE toy requests, build the quack defclass and
-;; code which wraps the doubly linked list to build the datastructures, write
-;; executor function that executes each request.
+(defclass op/render (op)
+  ((%data :accessor data
+          :initarg :data)))
+(defun op/render-p (op)
+  (typep op 'op/render))
 
-(defun execute-quack (quack)
-  nil)
+(defclass op/enable (op)
+  ((%data :accessor data
+          :initarg :data)))
+(defun op/enable-p (op)
+  (typep op 'op/enable))
+
+(defclass op/disable (op)
+  ((%data :accessor data
+          :initarg :data)))
+(defun op/disable-p (op)
+  (typep op 'op/disable))
+
+(defclass op/attach (op)
+  ((%data :accessor data
+          :initarg :data)))
+(defun op/attach-p (op)
+  (typep op 'op/attach))
+
+(defclass op/detach (op)
+  ((%data :accessor data
+          :initarg :data)))
+(defun op/detach-p (op)
+  (typep op 'op/detach))
+
+(defclass op/recompilations (op)
+  ((%queue :accessor queue
+           :initarg :queue)))
+(defun op/recompilations-p (op)
+  (typep op 'op/recompilations))
+
+(defclass op/make-component (op)
+  ((%factory :accessor factory
+             :initarg :factory
+             :initform (constantly nil))))
+(defun op/make-component-p (op)
+  (typep op 'op/make-component))
 
 
-;; HEAD: (_: future event horizon )
-;; [00]: _
-;; HORIZON
+(defun make-op (op-type &rest args)
+  (apply #'make-instance op-type args))
 
-;; Run a function to push stuff onto the quack.
 
-;; HEAD: (_: future event horizon)
-;; + [Y0] req/compute-physics (_A)
-;; + [Y1] req/compute-and-emit-collisions (_A)
-;; + [Y2] req/phase/physics-update (_A)
-;; + [Y3] req/phase/update (_A)
-;; + [Y4] req/phase/render (_A)
-;; + [Y5] _A
-;; + [Y6] req/recompilations (_B)
-;; + [Y7] _B
-;; [00] _
-;; HORIZON
-
-;; HEAD: (_: future, _B: end of frame, _A: end of user code)
-;; - [Y0] req/compute-physics (_A) <nil requests>
-;; - [Y1] req/compute-and-emit-collisions (_A) <nil requests>
-;; - [Y2] req/phase/physics-update (_A) <generated X requests>
-;; [Y3] req/phase/update (_A)
-;; [Y4] req/phase/render (_A)
-;; + [X0] req/make-prefab-instance (_C)
-;; + [X1] _C
-;; + [X2] req/enable <actor 0> (_D)
-;; + [X3] _D
-;; + [X4] req/disable <actor 0> (_E)
-;; + [X5] _E
-;; [Y5] _A
-;; [Y6] req/recompilations (_B)
-;; [Y7] _B
-;; [00] _
-;; HORIZON
-
-;; HEAD: (_: future, _B: end of frame, _A: end of user code)
-;; - [Y3] req/phase/update (_A) <generated W requests>
-;; [Y4] req/phase/render (_A)
-;; [X0] req/make-prefab-instance (_C)
-;; [X1] _C
-;; [X2] req/enable <actor 0> (_D)
-;; [X3] _D
-;; [X4] req/disable <actor 0> (_E)
-;; [X5] _E
-;; + [W0] req/make-component <comp 0> (_F)
-;; + [W1] _F
-;; + [W2] req/attach <actor 0 | comp 0> (_G)
-;; + [W3] _G
-;; [Y5] _A
-;; [Y6] req/recompilations (_B)
-;; [Y7] _B
-;; [00] _
-;; HORIZON
-
-;; BR means "Beta reduction"
-;; Vocabulary: "Frame context" is the ( ... ) list after HEAD.
-;;             Any request can access.
-;; Vocabulary: "Request context" is the ( ... ) for a _request_
-;;             A set of cursors relavent to this specific request, provided by
-;;             the maker of the request.
-;; NOTE: A request can know the frame context and the current request context.
-;; NOTE: This DOES preserve the _actual_ ordering of the requests as found in
-;; the user's code.
-;; =======================
-;; HEAD: (_: future ...)
-;; [X0] req/make-prefab-instance (_C_pre, C_v:bind, _C_default, _C_post, _C)
-;; [X1] _C_pre
-;; [X2] _C_v:bind
-;; [X3] _C_default
-;; [X4] _C_post
-;; [X5] _C
-;; [00] _
-;; HORIZON
-;; =======================
+;; Registers:
+;; FC (frame Context: :end-of-frame, ...)
+;; OP (executing op)
+;; CC (executing operation's cursor context)
 ;;
-;; =======================
-;; HEAD: (_: future ...)
-;; - [X0] req/make-prefab-instance (_C)
-;; [X1] _C
-;; [00] _
-;; HORIZON
-;; =======================
-
-;; NOTE:
-;; When the phase-order can be specified by the user, there are some special
-;; V only symbols which represent actions of the engine that we do not want
-;; to export to the user. So, here V:BIND means "The point at which the physical
-;; assignment of the reference of the component into the actor happens." The
-;; other keywords simply represent phases the user can hook into. These
-;; V:BIND, etc keywords must NOT be overridable by the user. We can write
-;; macros to help with the management of these keywords.
+;; N (Nursury)
+;; G (Garden)
+;; P (prefab)
 ;;
-;; (adjust-attach-phase-order '(:pre v:bind :default :post))
+;; # microcode for a op/make-prefab exceution, etc.
+;; set CC (cc O)
+;; N = new nursury
+;; run make-prefab phases.
+;; merge N into G.
+(defclass quack ()
+  ((%fc :accessor fc)
+   (%op :accessor op)
+   (%cc :accessor cc)
+   (%ops :accessor ops
+         :initform (dll:make-list))))
 
-;; HEAD: (_: future, _B: end of frame, _A: end of user code)
-;; - [Y4] req/phase/render (_A) <generated no requests>
-;; - [X0] req/make-prefab-instance <prefab 1> <parent 1> (_C) <gen. V request>
+(u:define-printer (quack strm)
+  (format strm "Ops: ~(~S~)" (ops quack)))
 
-;; + [V0] req/make-actor <actor 1> () <- This means cannot generate BR requests!
-;; + [V1] req/make-component <comp 1> (_H)
-;; + [V2] _H
-;; + [V3] req/make-component <comp 2> (_I)
-;; + [V4] _I
 
-;; XXX
-;; Leave this be until we determine if request contexts make sense and work.
-;; XXX
+(defun make-quack ()
+  (make-instance 'quack))
 
-;; + [V5] req/attach :pre <actor 1> <comp 1> (_J0)
-;; + [V6] _J0
-;; + [V7] req/attach :pre <actor 1> <comp 2> (_K0)
-;; + [V8] _K0
+;;         :initform (dll:make-list (make-op 'op/cursor :name :end-of-frame))
+(defun init-quack (quack)
+  (assert (zerop (dll:length (ops quack))))
 
-;; + [V5] req/attach v:bind <actor 1> <comp 1> ()
-;; + [V7] req/attach v:bind <actor 1> <comp 2> ()
+  (let* ((ops (ops quack))
+         (cursor (make-op 'op/cursor :name :end-of-frame))
+         (fc (make-cursor-context cursor)))
 
-;; + [V5] req/attach :default <actor 1> <comp 1> (_J1)
-;; + [V6] _J1
-;; + [V7] req/attach :default <actor 1> <comp 2> (_K1)
-;; + [V8] _K1
+    (setf (location cursor) (dll:insert ops cursor)
+          (fc quack) fc)
 
-;; + [V5] req/attach :post <actor 1> <comp 1> (_J2)
-;; + [V6] _J2
-;; + [V7] req/attach :post <actor 1> <comp 2> (_K2)
-;; + [V8] _K2
-
-;; + [V9] req/make-actor <actor 2> () <- This means cannot generate BR requests!
-;; + [V10] req/make-component <comp 3> (_L)
-;; + [V11] _L
-;; + [V12] req/make-component <comp 4> (_M)
-;; + [V13] _M
-;; + [V14] req/attach <actor 2> <comp 3> (_N)
-;; + [V15] _N
-;; + [V16] req/attach <actor 2> <comp 4> (_O)
-;; + [V17] _O
-
-;; + [V18] req/reparent <actor 2> <actor 1>
-
-;; + [V19] req/spawn-actor <actor 1> <parent 1> (_P)
-;; + [V20] _P
-
-;; [X1] _C
-;; [X2] req/enable <actor 0> (_D)
-;; [X3] _D
-;; [X4] req/disable <actor 0> (_E)
-;; [X5] _E
-;; [W0] req/make-component <comp 0> (_F)
-;; [W1] _F
-;; [W2] req/attach <actor 0 | comp 0> (_G)
-;; [W3] _G
-;; [Y5] _A
-;; [Y6] req/recompilations (_B)
-;; [Y7] _B
-;; [00] _
-;; HORIZON
+    quack))
 
 
 
-;; NOTE: Cursors when inserted are kept in order in a secondary data data
-;; struture.
-
-;;; Requests
+;;; Operations
 
 ;; Component requests
+;; putative
 (defun make-component (context component-type
-                       &optional (initializer-factory (constantly nil)))
+                       &optional (factory (constantly nil)))
 
   (let* ((core (core context))
          (component (make-instance component-type :context context))
-         (req (make-request-factory 'request/make-component
-                                    :component component
-                                    :initializer-factory initializer-factory)))
-    (quack-enqueue (quack context) req)
+         (op (make-op 'op/make-component
+                      :component component
+                      :factory factory)))
+    (quack-enqueue (quack context) op)
     ;; NOTE: This is a reference to the component only. It is not set up. The
     ;; user can only treat this return value as a reference and must not access
     ;; any slots in it _this frame_.
     component))
+
+
+
+;; Next time:
+;; Explore enter/exit events.
+;; Actually emulate component/actor system.
+;; Resolve the cursor-context and frame-cursors _key_ API. Should the
+;; cursor-context be more ornate?
+;; Implement a bundle with sorting on the phases.
+;; Define the semantics and concrete understanding of _Domains_.
+;; ENsure ordering between operations is what we believe we need.
+
+;; NOTE: make cursor pool so we can reuse them without GC as much.
+
+(defun doit ()
+  (let ((quack (make-quack)))
+
+    (init-quack quack)
+
+    ;; test operation making.
+    (let (eof eouf)
+      (setf eof (lookup-cursor (fc quack) :end-of-frame))
+      (make-op/end-of-user-frame quack eof)
+      (make-op/recompilations quack eof)
+      (setf eouf (lookup-cursor (fc quack) :end-of-user-frame))
+      (make-op/compute-physics quack eouf eouf)
+      (make-op/compute-and-emit-collisions quack eouf eouf)
+      (make-op/physics-update quack eouf eouf)
+      (make-op/update quack eouf eouf)
+      (make-op/render quack eouf eouf)
+      )
+
+    (quack-execute quack)
+
+    quack))
+
+(defun quack-execute-op (quack)
+  (let ((op (op quack))
+        (fc (fc quack))
+        (cc (cc quack)))
+    (format t "====~%")
+    (when (op/cursor-p op)
+      (remove-cursor fc op)
+      (format t " Removed cursor: ~(~S~)~%" (name op))
+      (return-from quack-execute-op))
+
+    (format t " OP: ~S~% CC: ~S~% FC: ~S~%"
+            op cc fc)
+    (cond
+      ((op/physics-update-p op)
+       ;; Hack to simulate someone calling enable in this phase
+       (make-op/enable quack (lookup-cursor cc :continuation)))
+
+      ((op/update-p op)
+       ;; Hack to simulate someone calling enable in this phase
+       (make-op/disable quack (lookup-cursor cc :continuation)))
+
+      ((op/enable-p op)
+       ;; Hack to simulate someone calling enable in this phase
+       (make-op/disable quack (lookup-cursor cc :continuation)))
+
+      (t
+       nil))))
+
+(defun quack-execute (quack)
+  (let ((ops (ops quack)))
+    (loop :until (zerop (dll:length ops))
+          :for node = (dll:head ops)
+          :for op = (dll:value node)
+          :do
+             (setf (op quack) op
+                   (cc quack) (cursor-context op))
+
+             (dll:delete ops node)
+             (quack-execute-op quack))))
+
+
+(defun make-op/end-of-user-frame (quack insertion-cursor)
+  (let* ((ops (ops quack))
+         (insert-location (location insertion-cursor))
+         (cursor (make-op 'op/cursor :name :end-of-user-frame)))
+
+    (setf (location cursor)
+          (dll:insert ops cursor
+                      :where :before
+                      :target insert-location))
+
+    (add-cursor (fc quack) cursor)
+
+    quack))
+
+
+(defun make-op/compute-physics (quack insertion-cursor continuation-cursor)
+  (let* ((ops (ops quack))
+         (insert-location (location insertion-cursor))
+         (cursor-context (make-cursor-context continuation-cursor))
+         (op/compute-physics (make-op 'op/compute-physics
+                                      :domain "all garden comps"
+                                      :cursor-context cursor-context
+                                      :data "Hello world compute/physics")))
+
+    (dll:insert ops op/compute-physics :where :before :target insert-location)
+
+    quack))
+
+(defun make-op/compute-and-emit-collisions
+    (quack insertion-cursor continuation-cursor)
+
+  (let* ((ops (ops quack))
+         (insert-location (location insertion-cursor))
+         (cursor-context (make-cursor-context continuation-cursor))
+         (op/compute-and-emit-collisions
+           (make-op 'op/compute-and-emit-collisions
+                    :domain "all garden comps"
+                    :cursor-context cursor-context
+                    :data "Hello world compute/phys-coll")))
+
+    (dll:insert ops op/compute-and-emit-collisions
+                :where :before :target insert-location)
+
+    quack))
+
+(defun make-op/physics-update
+    (quack insertion-cursor continuation-cursor)
+
+  (let* ((ops (ops quack))
+         (insert-location (location insertion-cursor))
+         (cursor-context (make-cursor-context continuation-cursor))
+         (op/physics-update
+           (make-op 'op/physics-update
+                    :domain "all garden comps"
+                    :cursor-context cursor-context
+                    :data "Hello world compute/phys-update")))
+
+    (dll:insert ops op/physics-update
+                :where :before :target insert-location)
+
+    quack))
+
+(defun make-op/update
+    (quack insertion-cursor continuation-cursor)
+
+  (let* ((ops (ops quack))
+         (insert-location (location insertion-cursor))
+         (cursor-context (make-cursor-context continuation-cursor))
+         (op/update
+           (make-op 'op/update
+                    :domain "all garden comps"
+                    :cursor-context cursor-context
+                    :data "Hello world compute/update")))
+
+    (dll:insert ops op/update
+                :where :before :target insert-location)
+
+    quack))
+
+(defun make-op/render
+    (quack insertion-cursor continuation-cursor)
+
+  (let* ((ops (ops quack))
+         (insert-location (location insertion-cursor))
+         (cursor-context (make-cursor-context continuation-cursor))
+         (op/render
+           (make-op 'op/render
+                    :domain "all garden comps"
+                    :cursor-context cursor-context
+                    :data "Hello world compute/render")))
+
+    (dll:insert ops op/render
+                :where :before :target insert-location)
+
+    quack))
+
+(defun make-op/recompilations (quack insertion-cursor)
+  (let* ((ops (ops quack))
+         (insert-location (location insertion-cursor))
+         (cursor (make-op 'op/cursor :name :recompilation))
+         (cursor-context (make-cursor-context cursor))
+         (op/recompilations (make-op 'op/recompilations
+                                     :domain "RRR"
+                                     :cursor-context cursor-context
+                                     :queue "Hello world :recompilations")))
+
+    (dll:insert ops op/recompilations :where :before :target insert-location)
+
+    (setf (location cursor)
+          (dll:insert ops cursor
+                      :where :before
+                      :target insert-location))
+    quack))
+
+(defun make-op/enable (quack insertion-cursor)
+  (let* ((ops (ops quack))
+         (insert-location (location insertion-cursor))
+         (cursor (make-op 'op/cursor :name :enable))
+         (cursor-context (make-cursor-context cursor))
+         (op/enable (make-op 'op/enable
+                             :domain "EEE"
+                             :cursor-context cursor-context
+                             :data "Hello world :enable")))
+
+    (dll:insert ops op/enable :where :before :target insert-location)
+
+    (setf (location cursor)
+          (dll:insert ops cursor
+                      :where :before
+                      :target insert-location))
+    quack))
+
+(defun make-op/disable (quack insertion-cursor)
+  (let* ((ops (ops quack))
+         (insert-location (location insertion-cursor))
+         (cursor (make-op 'op/cursor :name :disable))
+         (cursor-context (make-cursor-context cursor))
+         (op/disable (make-op 'op/disable
+                              :domain "DDD"
+                              :cursor-context cursor-context
+                              :data "Hello world :disable")))
+
+    (dll:insert ops op/disable :where :before :target insert-location)
+
+    (setf (location cursor)
+          (dll:insert ops cursor
+                      :where :before
+                      :target insert-location))
+    quack))
+
+
+
+
+
+
 
 (defmethod enable ((self component))
   nil)
@@ -299,60 +507,3 @@
 
 (defmethod destroy ((self actor))
   nil)
-
-;; -----------------------------------------------------------------------
-;; Random testing code.
-
-;; NOTICE: An operation has a scope about who it is going to affect (an actor
-;; and it components and it descendants recursively (in typedag order) OR *all*
-;; components in typedag order) _and_ operations are themselves ordered.
-
-(defun doit ()
-  (let* ((dll (dll:make-list))
-         ;; Keep track of these nodes for now.
-         (cur-0 nil)
-         (cur-1 nil))
-    (flet ((emit-dll (edl msg)
-             (format t "dlist: ~A~% HEAD~%~{  ~(~S~)~%~} HORIZON~%~%"
-                     msg
-                     (dll:list-values edl))))
-
-      ;; TODO: Cursors should be held in a hash table for easy access in quack.
-
-      (emit-dll dll "Empty")
-
-      (setf cur-0 (dll:insert dll '(0 . :cursor) :where :before))
-      (emit-dll dll "Insert before :head Cursor-0")
-
-      (setf cur-1 (dll:insert dll '(1 . :cursor) :where :after
-                                                 :target (dll:tail dll)))
-      (emit-dll dll "Insert after :tail Cursor-1")
-
-      (dll:insert dll :0-zero :where :before :target cur-0)
-      (emit-dll dll "Queue before Cursor-0: :0-zero")
-
-      (dll:insert dll :0-one :where :before :target cur-0)
-      (emit-dll dll "Queue before Cursor-0: :0-one")
-
-      (dll:insert dll :1-zero :where :before :target cur-1)
-      (emit-dll dll "Queue before Cursor-1: :1-zero")
-
-      (dll:insert dll :1-one :where :before :target cur-1)
-      (emit-dll dll "Queue before Cursor-1: :1-one")
-
-      (dll:insert dll :1-two :where :before :target cur-1)
-      (emit-dll dll "Queue before Cursor-1: :1-two")
-
-      (format t "There are ~A elements in the dll.~%~%" (dll:length dll))
-
-      (format t "Processing dll like a queue from head to horizon...~%")
-      (format t "  AT HEAD~%")
-      (loop :until (zerop (dll:length dll))
-            :for node = (dll:head dll)
-	    :for idx :from 0
-            :do (dll:delete dll (dll:head dll))
-                (format t "   Processed node: [~A]: ~(~S~)~%" idx node))
-      (format t "  AT HORIZON~%")
-
-
-      )))
