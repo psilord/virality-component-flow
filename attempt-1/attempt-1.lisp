@@ -195,6 +195,8 @@
 ;; ops processed, profiling information for each op/bundle/etc number of ops
 ;; generated in the frame and what ops classes generated them, etc, etc)
 ;; C (Config register, "should I profile", "write frames to log", etc)
+;; Allow an op/config that maybe the user can even invoke if they wanted
+;; to turn on and off logging between operations in their code, etc, etc.
 ;;
 ;; # microcode for a op/make-prefab exceution, etc.
 ;; set CC (cc O)
