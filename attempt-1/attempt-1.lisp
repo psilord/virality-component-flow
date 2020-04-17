@@ -190,6 +190,12 @@
 ;; G (Garden)
 ;; P (prefab)
 ;;
+;; NEXT-TIME: Tell the others about thiese ideas. -psilord
+;; S (status register, actually a clos instance, hold failed ops, number of
+;; ops processed, profiling information for each op/bundle/etc number of ops
+;; generated in the frame and what ops classes generated them, etc, etc)
+;; C (Config register, "should I profile", "write frames to log", etc)
+;;
 ;; # microcode for a op/make-prefab exceution, etc.
 ;; set CC (cc O)
 ;; N = new nursury
