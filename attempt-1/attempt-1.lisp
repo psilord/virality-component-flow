@@ -255,6 +255,8 @@
 ;; Ensure we don't push deregister op when no disables are in place, etc, etc?
 ;; New registers: Nursery, Purgatory
 ;; New status register flags: destroy-requested-p, reap-p
+;; Do we need a "Next Phase" op & register?
+;;   Or is putting in current op good enough?
 ;; Reify mutation phases into a cursor context, so the current cursor context
 ;; of a operation knows which _next_ phase it should dump its operations into
 ;; (including the known names for those cursors in the context).
