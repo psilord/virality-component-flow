@@ -190,7 +190,6 @@
 ;; G (Garden)
 ;; P (prefab)
 ;;
-;; NEXT-TIME: Tell the others about thiese ideas. -psilord
 ;; S (status register, actually a clos instance, hold failed ops, number of
 ;; ops processed, profiling information for each op/bundle/etc number of ops
 ;; generated in the frame and what ops classes generated them, etc, etc)
@@ -253,7 +252,18 @@
 
 
 ;; Next time:
+;; Ensure we don't push deregister op when no disables are in place, etc, etc?
+;; New registers: Nursery, Purgatory
+;; New status register flags: destroy-requested-p, reap-p
+;; Reify mutation phases into a cursor context, so the current cursor context
+;; of a operation knows which _next_ phase it should dump its operations into
+;; (including the known names for those cursors in the context).
+;; Complete understanding of destroy operation.
+;; Simulate destroy before the other similar ones like make-prefab-instance.
 ;; Explore enter/exit events.
+;; Implement lambda operation and lambda closures for operations.
+;; Possibly merge v:enable and v:enable-register in a better way.
+;;
 ;; Actually emulate component/actor system.
 ;; Resolve the cursor-context and frame-cursors _key_ API. Should the
 ;; cursor-context be more ornate?
@@ -262,15 +272,65 @@
 ;; ENsure ordering between operations is what we believe we need.
 ;;
 ;; <psilord> Wow! I just realized we can build a gdb like interface for
-;;	  quack. Like, you can next over an operation, or step into one and
-;;	  watch it call the bundles on all the components, etc, etc,
-;;	  etc. "break on any phase emitting an disable" "break when attempting
-;;	  to enable >this< actor.   [01:09]
+;;        quack. Like, you can next over an operation, or step into one and
+;;        watch it call the bundles on all the components, etc, etc,
+;;        etc. "break on any phase emitting an disable" "break when attempting
+;;        to enable >this< actor.   [01:09]
 ;;
 ;; <psilord> Theoretically, we can have an honest to god interrupt vector
-;; 	  specification. Like, if ops failed to execute (in a BAD way), then
-;; 	  call this user function that isn't a part of any actor or component.
-;;								        [01:12]
+;;        specification. Like, if ops failed to execute (in a BAD way), then
+;;        call this user function that isn't a part of any actor or component.
+;;                                                                      [01:12]
+;; possibly merge some of this together.
+
+;; INSPECT CODE
+;;(define-bundle-order 'enable
+;;    (:pre v:default :post (register (:collision :audio :network))))
+;;
+;;(define-bundle-order 'enable-register
+;;    (:collision :audio :network))
+;;
+;;(define-bundle-order 'disable-deregister
+;;    (:network :audio :collision))
+;;
+;;(define-bundle-order 'disable
+;;    (:pre v:default :post))
+;;
+;;
+;;(define-bundle-order 'attach
+;;    (:pre v:default :post))
+;;
+;;(define-bundle-order 'attach-register
+;;    (:collision :audio :network))
+;;
+;;(define-bundle-order 'detach-deregister
+;;    (:network :audio :collision))
+;;
+;;(define-bundle-order 'detach
+;;    (:pre v:default :post))
+;;
+;;(define-behavior v:register :collision ((self sphere) details)
+;;  (col::deregister-collider (v:context self) self))
+
+;;(define-behavior v:deregister :collision ((self sphere) details)
+;;  (col::deregister-collider (v:context self) self))
+
+
+
+;;(defun v:disable (comp)
+;;  (let ((context (content comp))
+;;      (op/disable (make-op 'disable ......))
+;;      (op/deregister (make-op 'disable-deregister ......)))
+;;    (insert-op op/disable :continuation)
+;;    (insert-op op/deregister :conintuation)))
+;;
+;;(defun v:detach (comp)
+;;  (let ((context (content comp))
+;;      (op/disable (make-op 'detach ......))
+;;      (op/deregister (make-op 'detach-deregister ......)))
+;;    (insert-op op/disable :continuation)
+;;    (insert-op op/deregister :conintuation)))
+
 
 
 
@@ -286,6 +346,7 @@
       (setf eof (lookup-cursor (fc quack) :end-of-frame))
       (make-op/end-of-user-frame quack eof)
       (make-op/recompilations quack eof)
+
       (setf eouf (lookup-cursor (fc quack) :end-of-user-frame))
       (make-op/compute-physics quack eouf eouf)
       (make-op/compute-and-emit-collisions quack eouf eouf)

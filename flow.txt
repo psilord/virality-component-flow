@@ -261,3 +261,29 @@ M, then when M gets recompiled, ONLY THOSE 5 instances should get an
 "on-material-recompile" callback. This implies their are data structures
 or functions that go into components to test if they are applicable to get
 that event.
+
+
+1) The material for a specific pass knows which attachments from framebuffers
+(one or more) to use as input (for texture attachments in uniforms) and which
+attachments of a single framebuffer to use as output. (It might be possible to
+write to different attachments of different framebuffers at the same time. Pyx
+does not currently do this.)
+
+2) A material MUST be able to specify opengl capabilities/features per
+draw call.
+
+3) A render pass does a startup and tear down for a framebuffer
+(like clear color, clear depth buffer, etc). It does this once when entering
+the processing of that pass, and once when leaving it.
+
+4) The user (currently) specifies the render pass order.
+
+5) The algorithm:
+for each render pass
+ for each viewport
+  for each sorted object
+    If it has a material for this pass,
+      then, after applying the correct capabilities/feature, and
+            after fixing up the correct framebuffers attachments
+	      that amterial needs,
+	    then perform the draw calls.
