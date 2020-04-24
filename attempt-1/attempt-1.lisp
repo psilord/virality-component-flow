@@ -287,34 +287,40 @@
 
 ;; INSPECT CODE
 ;;(define-bundle-order 'enable
-;;    (:pre v:default :post (register (:collision :audio :network))))
+;;    ((register (:network :audio :collision))   <- contextual bundle
+;;     :pre v:default :post))
 ;;
-;;(define-bundle-order 'enable-register
+;;(define-bundle-order 'enable-register <- maybe replace with contextual bundle
 ;;    (:collision :audio :network))
 ;;
-;;(define-bundle-order 'disable-deregister
+;;(define-bundle-order 'disable-deregister <- maybe replace with context bundle
 ;;    (:network :audio :collision))
 ;;
 ;;(define-bundle-order 'disable
-;;    (:pre v:default :post))
+;;    (:pre v:default :post
+;;     (deregister (:collision :network :audio)))) <- contextual bundle
 ;;
 ;;
 ;;(define-bundle-order 'attach
-;;    (:pre v:default :post))
+;;    ((register (:network :audio :collision)) <- contextual bundle
+;;     :pre v:default :post))
 ;;
-;;(define-bundle-order 'attach-register
+;;(define-bundle-order 'attach-register <- maybe replace with "context bundle"
 ;;    (:collision :audio :network))
 ;;
-;;(define-bundle-order 'detach-deregister
+;;(define-bundle-order 'detach-deregister <- maybe replace w/ "context bundle"
 ;;    (:network :audio :collision))
 ;;
 ;;(define-bundle-order 'detach
-;;    (:pre v:default :post))
+;;    (:pre v:default :post
+;;     (deregister (:collision :audio :network))) <- contextual bundle
 ;;
-;;(define-behavior v:register :collision ((self sphere) details)
+;;(define-contextual-behavior v:enable v:register :collision
+;;                            ((self sphere) details)
 ;;  (col::deregister-collider (v:context self) self))
 
-;;(define-behavior v:deregister :collision ((self sphere) details)
+;;(define-contextual-behavior v:enable v:deregister :collision
+;;                            ((self sphere) details)
 ;;  (col::deregister-collider (v:context self) self))
 
 
