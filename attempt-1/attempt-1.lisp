@@ -46,9 +46,6 @@
            :initarg :quack
            :initform nil)))
 
-(defun quack-enqueue (queue thing)
-  nil)
-
 (defclass context ()
   ((%core :reader core
           :initarg :core)))
@@ -87,10 +84,14 @@
 (defun remove-cursor (cursor-context cursor)
   (remhash (name cursor) (cursors cursor-context)))
 
+;; -----------------------------------------------------------------------
 
 (defclass op ()
   ((%domain :accessor domain
             :initarg :domain)
+   (%modifier :accessor modifier
+              :initarg :modifier
+              :initform (constantly t))
    (%cursor-context :accessor cursor-context
                     :initarg :cursor-context
                     :initform nil)))
@@ -180,6 +181,29 @@
 (defun make-op (op-type &rest args)
   (apply #'make-instance op-type args))
 
+;; -----------------------------------------------------------------------
+
+(defclass status ()
+  (;; status flags and other similar data caused by executing ops.
+   (%destroy-requested-p :accessor destroy-requested-p
+                         :initarg :destroy-requested-p
+                         :initform nil)
+   (%reap-p :accessor reap-p
+            :initarg :reap-p
+            :initform nil)
+   ;; Did any ops _complete_ execution?
+   (%ops-executed-p :accessor ops-executed-p
+		    :initarg :ops-executed-p
+		    :initform nil)))
+
+(u:define-printer (status strm)
+  (format strm "des-req-p: ~A, reap-p: ~A, ops-exec-p: ~A"
+	  (destroy-requested-p status)
+	  (reap-p status)
+	  (ops-executed-p status)))
+
+(defun make-status (&rest args)
+  (apply #'make-instance 'status args))
 
 ;; Registers:
 ;; FC (frame Context: :end-of-frame, ...)
@@ -203,9 +227,13 @@
 ;; run make-prefab phases.
 ;; merge N into G.
 (defclass quack ()
-  ((%fc :accessor fc)
-   (%op :accessor op)
-   (%cc :accessor cc)
+  (;; registers
+   (%fc :accessor fc) ;; frame cursor context
+   (%op :accessor op) ;; operation currently executing
+   (%cc :accessor cc) ;; cursor context for executing operation
+   (%sr :accessor sr) ;; status flags
+   (%mc :accessor mc) ;; current mutation phase cursor context?
+   ;; DList of ops to execute.
    (%ops :accessor ops
          :initform (dll:make-list))))
 
@@ -225,7 +253,8 @@
          (fc (make-cursor-context cursor)))
 
     (setf (location cursor) (dll:insert ops cursor)
-          (fc quack) fc)
+          (fc quack) fc
+          (sr quack) (make-status))
 
     quack))
 
@@ -235,6 +264,11 @@
 
 ;; Component requests
 ;; putative
+
+(defun quack-enqueue (thing stuff)
+  (declare (ignore thing stuff))
+  nil)
+
 (defun make-component (context component-type
                        &optional (factory (constantly nil)))
 
@@ -253,7 +287,7 @@
 
 ;; Next time:
 ;; Ensure we don't push deregister op when no disables are in place, etc, etc?
-;; New registers: Nursery, Purgatory
+;; New registers: Status, Nursery, Purgatory
 ;; New status register flags: destroy-requested-p, reap-p
 ;; Do we need a "Next Phase" op & register?
 ;;   Or is putting in current op good enough?
@@ -370,15 +404,16 @@
 (defun quack-execute-op (quack)
   (let ((op (op quack))
         (fc (fc quack))
-        (cc (cc quack)))
+        (cc (cc quack))
+	(sr (sr quack)))
     (format t "====~%")
     (when (op/cursor-p op)
       (remove-cursor fc op)
       (format t " Removed cursor: ~(~S~)~%" (name op))
       (return-from quack-execute-op))
 
-    (format t " OP: ~S~% CC: ~S~% FC: ~S~%"
-            op cc fc)
+    (format t " OP: ~S~% CC: ~S~% FC: ~S~% SR: ~S~%"
+            op cc fc sr)
     (cond
       ((op/physics-update-p op)
        ;; Hack to simulate someone calling enable in this phase
