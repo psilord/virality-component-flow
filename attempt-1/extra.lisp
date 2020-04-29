@@ -65,7 +65,7 @@
 ;; HEAD: (_: future event horizon)
 
 ;; + [P0] _prologue
-;; + [Y0] op/prepare-mutation-phase
+;; + [Y0] op/set-mutation-phase 1
 ;; + [Y1] op/compute-physics (_A)   <----------------------------- probable fb
 ;; + [Y2] op/compute-and-emit-collisions (_A)
 ;; + [Y3] op/phase/physics-update (_A)
