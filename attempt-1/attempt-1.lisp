@@ -585,6 +585,9 @@
                 :target (location (lookup-cursor fc :end-of-user-frame)))
     quack))
 
+;; TODO: Some of these should understand to poke CC first, and if that's nil,
+;; then poke MC, and if that's nil, then use FC. I don't know which ops need
+;; to know those distinctions yet.
 (defun op/bundle (quack domain bundle)
   (let ((ops (ops quack))
         (fc (fc quack))
