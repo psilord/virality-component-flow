@@ -436,7 +436,6 @@
     (op/bundle quack :garden 'update)
     (op/bundle quack :garden 'render)
 
-    (op/clear-mutation-phase quack)
 
     ;; Keep Going! (Namely, see if we need to add more mutation cursors
     ;; as long as there are ops possible to use them.)
@@ -486,10 +485,10 @@
        nil)
 
       ((op/set-mutation-phase-p op)
-       (let* ((cursor-prefabs (make-op 'op/cursor :name :prefabs))
-              (cursor-parenting (make-op 'op/cursor :name :parenting))
-              (cursor-aded (make-op 'op/cursor :name :aded))
-              (cursor-destroy (make-op 'op/cursor :name :destroy))
+       (let* ((cursor-prefabs (make-op 'op/cursor :name :mut-prefabs))
+              (cursor-parenting (make-op 'op/cursor :name :mut-parenting))
+              (cursor-aded (make-op 'op/cursor :name :mut-aded))
+              (cursor-destroy (make-op 'op/cursor :name :mut-destroy))
               (mc (make-cursor-context cursor-prefabs cursor-parenting
                                        cursor-aded cursor-destroy)))
 
@@ -517,6 +516,17 @@
                       :where :before
                       :target (location (lookup-cursor fc :end-of-user-frame)))
           )
+
+         ;; And push the op which clears the mutation context right now. so it
+         ;; ends up in the right place. TODO: We need some sort of decision op
+         ;; to decide if another mutation phase is warranted.  Probably
+         ;; something gets set in SR that indicates there were ops that could
+         ;; need it. Maybe, we have an op JUST BEFORE the mutation phase which
+         ;; clears a flag, then ops set the flag, then another one that creates
+         ;; another mutation phase of the flag was set, and doesn't if
+         ;; cleared. THat meant there were no operations in the mutation phase
+         ;; so the generation can stop.
+         (op/clear-mutation-phase quack)
 
          ;; set the mutation register to the newly created mutation context
          (setf (mc quack) mc)))
