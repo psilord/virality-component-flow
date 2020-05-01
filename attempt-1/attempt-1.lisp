@@ -138,6 +138,9 @@
 (defun op/construct-mutation-phase-p (op)
   (typep op 'op/construct-mutation-phase))
 
+(u:define-printer (op/construct-mutation-phase strm)
+  (format strm "~(~S~)" (behavior op/construct-mutation-phase)))
+
 ;; SR Flags affected: mutable-ops-executed-p: NIL
 ;; TODO: possibly this is unneeded
 (defclass op/clear-mutation-phase (op) ())
