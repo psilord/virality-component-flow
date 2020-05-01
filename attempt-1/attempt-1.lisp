@@ -215,6 +215,7 @@
    (%reap-p :accessor reap-p
             :initarg :reap-p
             :initform nil)
+   ;; TODO: Reconcile this and below into one flag
    (%mutable-ops-executed-p :accessor mutable-ops-executed-p
                             :initarg :mutable-ops-executed-p
                             :initform nil)
@@ -224,10 +225,11 @@
                     :initform nil)))
 
 (u:define-printer (status strm)
-  (format strm "des-req-p: ~A, reap-p: ~A, ops-exec-p: ~A"
+  (format strm "des-req-p: ~A, reap-p: ~A, ops-exec-p: ~A, mut-ops-ex-p: ~A"
           (destroy-requested-p status)
           (reap-p status)
-          (ops-executed-p status)))
+          (ops-executed-p status)
+          (mutable-ops-executed-p status)))
 
 (defun make-status (&rest args)
   (apply #'make-instance 'status args))
@@ -472,17 +474,14 @@
 
 (defun quack-execute-op (quack)
   (with-quack-registers (op fc cc sr mc ops) quack
-    (format t "====~%")
-
-    (when (op/cursor-p op)
-      (remove-cursor fc op)
-      (format t " Removed cursor: ~(~S~)~%" (name op))
-      (return-from quack-execute-op nil))
-
-    (format t " OP: ~S~% CC: ~S~% FC: ~S~% SR: ~S~% MC: ~S~%"
+    (format t "========================================================~%")
+    (format t " OP: ~S~% CC: ~S~% FC: ~S~% SR: ~S~% MC: ~S~%~%"
             op cc fc sr mc)
 
     (cond ;; Could be simplified in a data driven table or defmethods.
+      ((op/cursor-p op)
+       (execute-op/cursor quack))
+
       ((op/compute-physics-p op)
        (execute-op/compute-physics quack))
 
@@ -503,7 +502,11 @@
 
       (t
        (format t "Unknown op: ~S~%" op)
-       nil))))
+       nil))
+
+    (format t "~%-- After Op Execution:~%~%")
+    (emit-ops ops "Current Op Set")
+    ))
 
 (defun quack-execute (quack)
   (let ((ops (ops quack)))
@@ -517,8 +520,15 @@
              (dll:delete ops node)
              (quack-execute-op quack))))
 
+;; ----------------------------------
+
+(defun execute-op/cursor (quack)
+  (with-quack-registers (fc op) quack
+    (remove-cursor fc op)
+    (format t " Removed cursor: ~(~S~)~%" (name op))))
 
 ;; ----------------------------------
+
 (defun op/recompilations (quack)
   (let ((ops (ops quack))
         (fc (fc quack))
