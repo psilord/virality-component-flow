@@ -2,6 +2,11 @@
 
 (in-package #:attempt-1)
 
+(defmacro with-quack-registers (registers instance &body body)
+  `(with-accessors ,(mapcar (lambda (reg) (list reg reg)) registers)
+       ,instance
+     ,@body))
+
 (defgeneric enable (kernel))
 (defgeneric disable (kernel))
 (defgeneric attach (actor component))
@@ -101,6 +106,8 @@
 (defun op-p (op)
   (typep op 'op))
 
+
+;; SR Flags affected: NONE
 (defclass op/cursor (op)
   ((%location :accessor location
               :initarg :location)
@@ -112,6 +119,7 @@
 (u:define-printer (op/cursor strm)
   (format strm "~(~S~)" (name op/cursor)))
 
+;; SR FLAGS AFFECTED: mutable-ops-executed-p: T
 (defclass op/bundle (op)
   ((%bundle :accessor bundle
             :initarg :bundle)))
@@ -122,43 +130,52 @@
   (format strm "~(~S~) ~(~S~)"
           (domain op/bundle) (bundle op/bundle)))
 
-;; These don't really execute bundles, they do whatever they are designed to
-;; do.
+;; SR Flags affected: mutable-ops-executed-p: T / NIL depending on behavior.
+(defclass op/construct-mutation-phase (op)
+  ((%behavior :accessor behavior
+              :initarg :behavior
+              :initform :force))) ;; :force or :sense
+(defun op/construct-mutation-phase-p (op)
+  (typep op 'op/construct-mutation-phase))
 
-(defclass op/set-mutation-phase (op) ())
-(defun op/set-mutation-phase-p (op)
-  (typep op 'op/set-mutation-phase))
-
+;; SR Flags affected: mutable-ops-executed-p: NIL
+;; TODO: possibly this is unneeded
 (defclass op/clear-mutation-phase (op) ())
 (defun op/clear-mutation-phase-p (op)
   (typep op 'op/clear-mutation-phase))
 
+;; SR Flags affected: NONE (so far)
 (defclass op/compute-physics (op) ())
 (defun op/compute-physics-p (op)
   (typep op 'op/compute-physics))
 
+;; SR FLAGS AFFECTED: mutable-ops-executed-p: T
 (defclass op/compute-and-emit-collisions (op) ())
 (defun op/compute-and-emit-collisions-p (op)
   (typep op 'op/compute-and-emit-collisions))
 
+;; SR Flags affected: NONE
 (defclass op/recompilations (op) ())
 (defun op/recompilations-p (op)
   (typep op 'op/recompilations))
 
+;; SR FLAGS AFFECTED: mutable-ops-executed-p: T
 (defclass op/make-component (op) ())
 (defun op/make-component-p (op)
   (typep op 'op/make-component))
 
+;; SR FLAGS AFFECTED: mutable-ops-executed-p: T
 (defclass op/make-actor (op) ())
 (defun op/make-actor-p (op)
   (typep op 'op/make-actor))
 
+;; SR FLAGS AFFECTED: mutable-ops-executed-p: T
 (defclass op/make-prefab (op) ())
 (defun op/make-prefab-p (op)
   (typep op 'op/make-prefab))
 
 
-;; Candidate to change all below to op/bundle
+;; TODO: Candidate to change all below to op/bundle
 (defclass op/enable (op)
   ((%data :accessor data
           :initarg :data)))
@@ -198,6 +215,9 @@
    (%reap-p :accessor reap-p
             :initarg :reap-p
             :initform nil)
+   (%mutable-ops-executed-p :accessor mutable-ops-executed-p
+                            :initarg :mutable-ops-executed-p
+                            :initform nil)
    ;; Did any ops (of a certain subset of ops) _complete_ execution?
    (%ops-executed-p :accessor ops-executed-p
                     :initarg :ops-executed-p
@@ -365,44 +385,46 @@
 (defun make-quack ()
   (make-instance 'quack))
 
+
 (defun init-fc-register (quack)
   ;; NOTE: We need this because we need valid initial cursor contexts that must
   ;; exist BEFORE any op is actually added to quack. Otherwise, we won't know
   ;; where to add the op into the OPS data structure!
-  (assert (zerop (dll:length (ops quack))))
+  (with-quack-registers (ops fc) quack
+    (assert (zerop (dll:length ops)))
 
-  (let* ((ops (ops quack))
-         (cursor-prologue (make-op 'op/cursor :name :prologue))
-         (cursor-recomp (make-op 'op/cursor :name :recompilation))
-         (cursor-eouf (make-op 'op/cursor :name :end-of-user-frame))
-         (cursor-eof (make-op 'op/cursor :name :end-of-frame))
-         (fc (make-cursor-context cursor-eof cursor-eouf cursor-prologue
-                                  cursor-recomp)))
+    (let* ((cursor-prologue (make-op 'op/cursor :name :prologue))
+           (cursor-recomp (make-op 'op/cursor :name :recompilation))
+           (cursor-eouf (make-op 'op/cursor :name :end-of-user-frame))
+           (cursor-eof (make-op 'op/cursor :name :end-of-frame))
+           (new-fc (make-cursor-context cursor-eof cursor-eouf cursor-prologue
+                                        cursor-recomp)))
 
-    (setf
-     (location cursor-prologue)
-     (dll:insert ops cursor-prologue :where :before
-                                     :target (dll:head ops))
+      (setf
+       (location cursor-prologue)
+       (dll:insert ops cursor-prologue :where :before
+                                       :target (dll:head ops))
 
-     (location cursor-eouf)
-     (dll:insert ops cursor-eouf :where :after
-                                 :target (location cursor-prologue))
+       (location cursor-eouf)
+       (dll:insert ops cursor-eouf :where :after
+                                   :target (location cursor-prologue))
 
-     (location cursor-recomp)
-     (dll:insert ops cursor-recomp :where :after
-                                   :target (location cursor-eouf))
+       (location cursor-recomp)
+       (dll:insert ops cursor-recomp :where :after
+                                     :target (location cursor-eouf))
 
-     (location cursor-eof)
-     (dll:insert ops cursor-eof :where :after
-                                :target (location cursor-recomp))
+       (location cursor-eof)
+       (dll:insert ops cursor-eof :where :after
+                                  :target (location cursor-recomp))
 
-     (fc quack) fc)
+       fc new-fc)
 
-    quack))
+      quack)))
 
 (defun init-sr-register (quack)
-  (setf (sr quack) (make-status))
-  quack)
+  (with-quack-registers (sr) quack
+    (setf sr (make-status))
+    quack))
 
 ;; NOTE: make cursor pool so we can reuse them without GC as much.
 
@@ -415,20 +437,21 @@
 (defun doit ()
   (let ((quack (make-quack)))
 
-    ;; Do ONCE.
+    ;; Do ONCE--cannot be an operation
     (init-sr-register quack)
 
     ;; Prolly do the below each frame.
 
-    ;; Need a suitable frame cursor context immediately.
+    ;; Need a suitable frame cursor context immediately, can't be an op.
+    ;; Well it could be, but it would always insert :before head....
+    ;; START FRAME LOOP
     (init-fc-register quack)
 
-    ;; test operation making, generally loop this for each frame.
     (op/recompilations quack)
 
     ;; The below operations need a mutation context where their side effects
-    ;; will go when we get to processing them. Goes before eouf always.
-    (op/set-mutation-phase quack)
+    ;; will go when we get to processing them.
+    (op/construct-mutation-phase quack :force)
 
     (op/compute-physics quack)
     (op/compute-and-emit-collisions quack)
@@ -436,118 +459,47 @@
     (op/bundle quack :garden 'update)
     (op/bundle quack :garden 'render)
 
-
     ;; Keep Going! (Namely, see if we need to add more mutation cursors
     ;; as long as there are ops possible to use them.)
-
-
 
     (emit-ops (ops quack) "Initial Op Set")
 
     (quack-execute quack)
 
+    ;; END FRAME LOOP
+
     quack))
 
 (defun quack-execute-op (quack)
-  (let ((op (op quack))
-        (fc (fc quack))
-        (cc (cc quack))
-        (sr (sr quack))
-        (mc (mc quack))
-        (ops (ops quack)))
-
+  (with-quack-registers (op fc cc sr mc ops) quack
     (format t "====~%")
 
     (when (op/cursor-p op)
       (remove-cursor fc op)
       (format t " Removed cursor: ~(~S~)~%" (name op))
-      (return-from quack-execute-op))
+      (return-from quack-execute-op nil))
 
     (format t " OP: ~S~% CC: ~S~% FC: ~S~% SR: ~S~% MC: ~S~%"
             op cc fc sr mc)
-    (cond
+
+    (cond ;; Could be simplified in a data driven table or defmethods.
       ((op/compute-physics-p op)
-       nil)
+       (execute-op/compute-physics quack))
 
       ((op/compute-and-emit-collisions-p op)
-       nil)
+       (execute-op/compute-and-emit-collisions quack))
 
       ((op/recompilations-p op)
-       nil)
+       (execute-op/recompilations quack))
 
-      ((op/make-component-p op)
-       nil)
-
-      ((op/make-actor-p op)
-       nil)
-
-      ((op/make-prefab-p op)
-       nil)
-
-      ((op/set-mutation-phase-p op)
-       (let* ((cursor-prefabs (make-op 'op/cursor :name :mut-prefabs))
-              (cursor-parenting (make-op 'op/cursor :name :mut-parenting))
-              (cursor-aded (make-op 'op/cursor :name :mut-aded))
-              (cursor-destroy (make-op 'op/cursor :name :mut-destroy))
-              (mc (make-cursor-context cursor-prefabs cursor-parenting
-                                       cursor-aded cursor-destroy)))
-
-         ;; push all mutation cursors to the correct place in the ops
-         ;; TODO: Figure out real order and if there should be more or less
-         ;; cursors in the mutation context.
-         (setf
-          (location cursor-prefabs)
-          (dll:insert ops cursor-prefabs
-                      :where :before
-                      :target (location (lookup-cursor fc :end-of-user-frame)))
-
-          (location cursor-parenting)
-          (dll:insert ops cursor-parenting
-                      :where :before
-                      :target (location (lookup-cursor fc :end-of-user-frame)))
-
-          (location cursor-aded)
-          (dll:insert ops cursor-aded
-                      :where :before
-                      :target (location (lookup-cursor fc :end-of-user-frame)))
-
-          (location cursor-destroy)
-          (dll:insert ops cursor-destroy
-                      :where :before
-                      :target (location (lookup-cursor fc :end-of-user-frame)))
-          )
-
-         ;; And push the op which clears the mutation context right now. so it
-         ;; ends up in the right place. TODO: We need some sort of decision op
-         ;; to decide if another mutation phase is warranted.  Probably
-         ;; something gets set in SR that indicates there were ops that could
-         ;; need it. Maybe, we have an op JUST BEFORE the mutation phase which
-         ;; clears a flag, then ops set the flag, then another one that creates
-         ;; another mutation phase of the flag was set, and doesn't if
-         ;; cleared. THat meant there were no operations in the mutation phase
-         ;; so the generation can stop.
-         (op/clear-mutation-phase quack)
-
-         ;; set the mutation register to the newly created mutation context
-         (setf (mc quack) mc)))
+      ((op/construct-mutation-phase-p op)
+       (execute-op/construct-mutation-phase quack))
 
       ((op/clear-mutation-phase-p op)
-       (setf (mc quack) nil))
+       (execute-op/clear-mutation-phase quack))
 
       ((op/bundle-p op)
-       (format t " Executing ~S bundle~%" (bundle op))
-       (let ((bundle (bundle op)))
-         ;; TODO: Make this data driven to pick the bundle shit out of a
-         ;; table and then execute it automatically on the supplied domain.
-         (case bundle
-           (physics-update
-            nil)
-           (update
-            nil)
-           (render
-            nil)
-           (t
-            (format t " -> Unknown bundle: ~S~%" bundle)))))
+       (execute-op/bundle quack))
 
       (t
        (format t "Unknown op: ~S~%" op)
@@ -565,6 +517,8 @@
              (dll:delete ops node)
              (quack-execute-op quack))))
 
+
+;; ----------------------------------
 (defun op/recompilations (quack)
   (let ((ops (ops quack))
         (fc (fc quack))
@@ -575,61 +529,181 @@
                 :target (location (lookup-cursor fc :recompilation)))
     quack))
 
-(defun op/compute-physics (quack)
-  (let ((ops (ops quack))
-        (fc (fc quack))
-        (op (make-op 'op/compute-physics)))
+(defun execute-op/recompilations (quack)
+  (declare (ignore quack))
+  (format t "Execute op/recompilations~%")
+  )
 
-    (dll:insert ops op
-                :where :before
-                :target (location (lookup-cursor fc :end-of-user-frame)))
-    quack))
+;; ----------------------------------
+
+(defun op/compute-physics (quack)
+  (with-quack-registers (ops fc) quack
+    (let ((new-op (make-op 'op/compute-physics)))
+
+      (dll:insert ops new-op
+                  :where :before
+                  :target (location (lookup-cursor fc :end-of-user-frame)))
+      quack)))
+
+(defun execute-op/compute-physics (quack)
+  (declare (ignore quack))
+  (format t "Execute op/compute-physics~%")
+  )
+
+;; ----------------------------------
 
 (defun op/compute-and-emit-collisions (quack)
-  (let ((ops (ops quack))
-        (fc (fc quack))
-        (op (make-op 'op/compute-and-emit-collisions)))
+  (with-quack-registers (ops fc) quack
+    (let ((new-op (make-op 'op/compute-and-emit-collisions)))
 
-    (dll:insert ops op
-                :where :before
-                :target (location (lookup-cursor fc :end-of-user-frame)))
-    quack))
+      (dll:insert ops new-op
+                  :where :before
+                  :target (location (lookup-cursor fc :end-of-user-frame)))
+      quack)))
+
+(defun execute-op/compute-and-emit-collisions (quack)
+  (with-quack-registers (sr) quack
+    (format t "Execute op/compute-and-emit-collisions~%")
+
+    ;; This generates calls into the user code, we can either assume the
+    ;; mutation would happen, or have one of the op insertion calls in the API
+    ;; below set it. Figure it out.
+    (setf (mutable-ops-executed-p sr) T)
+    ))
+
+;; ----------------------------------
 
 ;; TODO: Some of these should understand to poke CC first, and if that's nil,
 ;; then poke MC, and if that's nil, then use FC. I don't know which ops need
 ;; to know those distinctions yet.
 (defun op/bundle (quack domain bundle)
-  (let ((ops (ops quack))
-        (fc (fc quack))
-        (op (make-op 'op/bundle
-                     :domain domain
-                     :bundle bundle)))
+  (with-quack-registers (ops fc) quack
+    (let ((new-op (make-op 'op/bundle
+                           :domain domain
+                           :bundle bundle)))
 
-    (dll:insert ops op
-                :where :before
-                :target (location (lookup-cursor fc :end-of-user-frame)))
-    quack))
+      (dll:insert ops new-op
+                  :where :before
+                  :target (location (lookup-cursor fc :end-of-user-frame)))
+      quack)))
 
-(defun op/set-mutation-phase (quack)
-  (let ((ops (ops quack))
-        (fc (fc quack))
-        (op (make-op 'op/set-mutation-phase)))
+(defun execute-op/bundle (quack)
+  (with-quack-registers (fc op cc sr mc ops) quack
+    (format t " Executing ~S bundle~%" (bundle op))
+    (let ((bundle (bundle op)))
+      ;; TODO: Make this data driven to pick the bundle shit out of a
+      ;; table and then execute it automatically on the supplied domain.
+      (case bundle
+        (physics-update
+         nil)
+        (update
+         nil)
+        (render
+         nil)
+        (t
+         (format t " -> Unknown bundle: ~S~%" bundle)))
 
-    (dll:insert ops op
-                :where :before
-                :target (location (lookup-cursor fc :end-of-user-frame)))
-    quack))
+      ;; TODO: Should this be in the API below to notify the CPU when something
+      ;; was ACTUALLY inserted into the mutable state?
+      (setf (mutable-ops-executed-p sr) T))))
+
+;; ----------------------------------
+
+(defun op/construct-mutation-phase (quack behavior)
+  (with-quack-registers (ops fc) quack
+    (let ((new-op (make-op 'op/construct-mutation-phase :behavior behavior)))
+
+      (dll:insert ops new-op
+                  :where :before
+                  :target (location (lookup-cursor fc :end-of-user-frame)))
+      quack)))
+
+(defun execute-op/construct-mutation-phase (quack)
+  (with-quack-registers (ops op sr fc mc) quack
+    (format t "Execute op/construct-mutation-phase (behavior: ~(~S~))~%"
+            (behavior op))
+
+    ;; TODO: Check of behavior is :force or :sense. If force, just
+    ;; force construct another mutation context and replace the one in
+    ;; the register. If :sense, only do this if the SR indicates
+    ;; (mutation requiring operations) have been executed since the
+    ;; last creation of the mutation-phase context.
+    (when (eq (behavior op) :sense)
+      (when (null (mutable-ops-executed-p sr))
+        ;; If no mutable ops had executed, then clear the MC and we're done
+        ;; constructing new mutation phases.
+        (setf mc nil)
+        (format t "Completed mutation phases!~%")
+        (return-from execute-op/construct-mutation-phase nil)))
+
+
+    (let* ((cursor-prefabs (make-op 'op/cursor :name :mut-prefabs))
+           (cursor-parenting (make-op 'op/cursor :name :mut-parenting))
+           (cursor-aded (make-op 'op/cursor :name :mut-aded))
+           (cursor-destroy (make-op 'op/cursor :name :mut-destroy))
+           (new-mc (make-cursor-context cursor-prefabs cursor-parenting
+                                        cursor-aded cursor-destroy)))
+
+      ;; push all mutation cursors to the correct place in the ops
+      ;; TODO: Figure out real order and if there should be more or less
+      ;; cursors in the mutation context.
+      (setf
+       (location cursor-prefabs)
+       (dll:insert ops cursor-prefabs
+                   :where :before
+                   :target (location (lookup-cursor fc :end-of-user-frame)))
+
+       (location cursor-parenting)
+       (dll:insert ops cursor-parenting
+                   :where :before
+                   :target (location (lookup-cursor fc :end-of-user-frame)))
+
+       (location cursor-aded)
+       (dll:insert ops cursor-aded
+                   :where :before
+                   :target (location (lookup-cursor fc :end-of-user-frame)))
+
+       (location cursor-destroy)
+       (dll:insert ops cursor-destroy
+                   :where :before
+                   :target (location (lookup-cursor fc :end-of-user-frame)))
+       )
+
+      ;; TODO: Should this actually go first or something like it?
+      ;;
+      ;; And push the op which clears the mutation context right now. so it
+      ;; ends up in the right place. TODO: We need some sort of decision op to
+      ;; decide if another mutation phase is warranted.  Probably something
+      ;; gets set in SR that indicates there were ops that could need
+      ;; it. Maybe, we have an op JUST BEFORE the mutation phase which clears a
+      ;; flag, then ops set the flag, then another one that creates another
+      ;; mutation phase of the flag was set, and doesn't if cleared. THat meant
+      ;; there were no operations in the mutation phase so the generation can
+      ;; stop.
+
+      (op/construct-mutation-phase quack :sense)
+
+      ;; set the mutation register to the newly created mutation context
+      (setf mc new-mc
+            (mutable-ops-executed-p sr) NIL))))
+
+
+;; ----------------------------------
 
 (defun op/clear-mutation-phase (quack)
-  (let ((ops (ops quack))
-        (fc (fc quack))
-        (op (make-op 'op/clear-mutation-phase)))
+  (with-quack-registers (ops fc) quack
+    (let ((new-op (make-op 'op/clear-mutation-phase)))
 
-    (dll:insert ops op
-                :where :before
-                :target (location (lookup-cursor fc :end-of-user-frame)))
-    quack))
+      (dll:insert ops new-op
+                  :where :before
+                  :target (location (lookup-cursor fc :end-of-user-frame)))
+      quack)))
 
+(defun execute-op/clear-mutation-phase (quack)
+  (with-quack-registers (mc) quack
+    (setf mc nil)))
+
+;; ----------------------------------
 
 
 ;; NOTE: Left two examples of operations yet to be converted that push cursors
