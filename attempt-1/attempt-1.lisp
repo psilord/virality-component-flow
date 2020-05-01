@@ -475,8 +475,8 @@
 (defun quack-execute-op (quack)
   (with-quack-registers (op fc cc sr mc ops) quack
     (format t "========================================================~%")
-    (format t " OP: ~S~% CC: ~S~% FC: ~S~% SR: ~S~% MC: ~S~%~%"
-            op cc fc sr mc)
+    (format t " SR: ~S~% OP: ~S~% CC: ~S~% MC: ~S~% FC: ~S~%~%"
+            sr op cc mc fc)
 
     (cond ;; Could be simplified in a data driven table or defmethods.
       ((op/cursor-p op)
