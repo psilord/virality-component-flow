@@ -264,18 +264,11 @@
 
 
 ;; Next time:
-;; Make a stepper debugger interface to quack.
-;; Ensure we don't push deregister op when no disables are in place, etc, etc?
-;; New registers: Status, Nursery, Purgatory, Mutation Context
-;; New status register flags: destroy-requested-p, reap-p
-;; Do we need a "Next Phase" op & register?
-;;   Or is putting in current op good enough?
-;; Reify mutation phases into a cursor context, so the current cursor context
-;; of a operation knows which _next_ phase it should dump its operations into
-;; (including the known names for those cursors in the context).
 ;; Complete understanding of destroy operation.
-;; Simulate destroy before the other similar ones like make-prefab-instance.
+;; Simulate make-prefab first and the nursery.
+
 ;; Explore enter/exit events.
+
 ;; Implement lambda operation and lambda closures for operations.
 ;; Possibly merge v:enable and v:enable-register in a better way.
 ;;
@@ -298,59 +291,45 @@
 ;;                                                                      [01:12]
 ;; possibly merge some of this together.
 
-;; INSPECT CODE
-;;(define-bundle-order 'enable
-;;    ((register (:network :audio :collision))   <- contextual bundle
-;;     :pre v:default :post))
-;;
-;;(define-bundle-order 'enable-register <- maybe replace with contextual bundle
-;;    (:collision :audio :network))
-;;
-;;(define-bundle-order 'disable-deregister <- maybe replace with context bundle
-;;    (:network :audio :collision))
-;;
-;;(define-bundle-order 'disable
-;;    (:pre v:default :post
-;;     (deregister (:collision :network :audio)))) <- contextual bundle
-;;
-;;
-;;(define-bundle-order 'attach
-;;    ((register (:network :audio :collision)) <- contextual bundle
-;;     :pre v:default :post))
-;;
-;;(define-bundle-order 'attach-register <- maybe replace with "context bundle"
-;;    (:collision :audio :network))
-;;
-;;(define-bundle-order 'detach-deregister <- maybe replace w/ "context bundle"
-;;    (:network :audio :collision))
-;;
-;;(define-bundle-order 'detach
-;;    (:pre v:default :post
-;;     (deregister (:collision :audio :network))) <- contextual bundle
-;;
-;;(define-contextual-behavior v:enable v:register :collision
-;;                            ((self sphere) details)
-;;  (col::deregister-collider (v:context self) self))
 
-;;(define-contextual-behavior v:enable v:deregister :collision
-;;                            ((self sphere) details)
-;;  (col::deregister-collider (v:context self) self))
-
-
-
-;;(defun v:disable (comp)
-;;  (let ((context (content comp))
-;;      (op/disable (make-op 'disable ......))
-;;      (op/deregister (make-op 'disable-deregister ......)))
-;;    (insert-op op/disable :continuation)
-;;    (insert-op op/deregister :conintuation)))
+;; Tentative Bundle and behavior specifications
 ;;
-;;(defun v:detach (comp)
-;;  (let ((context (content comp))
-;;      (op/disable (make-op 'detach ......))
-;;      (op/deregister (make-op 'detach-deregister ......)))
-;;    (insert-op op/disable :continuation)
-;;    (insert-op op/deregister :conintuation)))
+;; (v:define-bundle :enable
+;;    ((:register (:network :audio :collision))
+;;     :pre
+;;     :default
+;;     (thingy ())
+;;     :post))
+;;
+;;(v:define-bundle :disable
+;;    (:pre
+;;     :default
+;;     :post
+;;     (:deregister (:collision :audio :network))))
+;;
+;;(v:define-bundle foobar
+;;    (:pre
+;;     :default
+;;     :post
+;;     (qux (:default))))
+;;
+;; user writes on their component.
+;;(v:define-behavior :enable (:register :collision) ((self comp-type))
+;;  nil)
+;;
+;;(v:define-behavior :enable (thingy) ((self comp-type))
+;;  nil)
+;;
+;;(v:define-behavior :enable :default ((self comp-type))
+;;  nil)
+;;
+;;(v:define-behavior foobar (qux :default) ((self comp-type))
+;;  nil)
+;;
+;; user defined bundle for their own game.
+;;(define-bundle-order foo:thingy
+;;    (:pre :default :post))
+
 
 ;; Registers:
 ;; FC (frame Context: :end-of-frame, ...)
