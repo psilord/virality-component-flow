@@ -391,10 +391,16 @@
 
 
 ;; Next time:
-;; Complete understanding of destroy operation.
+;; Complete nursery and >>> component sorting <<<.
+;; Implement bundle definition and storage and execution.
+;; Implement attach/detach
+;; Implement reparent
+;; Implement enable/disable
 ;; Simulate make-prefab first and the nursery.
-
-;; Explore enter/exit events.
+;; Don't forget about adding maximum mutation phase limit.
+;;
+;; Complete understanding of destroy operation.
+;; Explore enter/exit events with the bundle system.
 
 ;; Implement lambda operation and lambda closures for operations.
 ;; Possibly merge v:enable and v:enable-register in a better way.
