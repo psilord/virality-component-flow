@@ -119,7 +119,7 @@
 (u:define-printer (op/cursor strm)
   (format strm "~(~S~)" (name op/cursor)))
 
-;; SR FLAGS AFFECTED: mutable-ops-executed-p: T
+;; SR FLAGS AFFECTED: moe-p: T
 (defclass op/bundle (op)
   ((%bundle :accessor bundle
             :initarg :bundle)))
@@ -130,7 +130,7 @@
   (format strm "~(~S~) ~(~S~)"
           (domain op/bundle) (bundle op/bundle)))
 
-;; SR Flags affected: mutable-ops-executed-p: T / NIL depending on behavior.
+;; SR Flags affected: moe-p: T / NIL depending on behavior.
 (defclass op/construct-mutation-phase (op)
   ((%behavior :accessor behavior
               :initarg :behavior
@@ -141,7 +141,7 @@
 (u:define-printer (op/construct-mutation-phase strm)
   (format strm "~(~S~)" (behavior op/construct-mutation-phase)))
 
-;; SR Flags affected: mutable-ops-executed-p: NIL
+;; SR Flags affected: moe-p: NIL
 ;; TODO: possibly this is unneeded
 (defclass op/clear-mutation-phase (op) ())
 (defun op/clear-mutation-phase-p (op)
@@ -152,7 +152,7 @@
 (defun op/compute-physics-p (op)
   (typep op 'op/compute-physics))
 
-;; SR FLAGS AFFECTED: mutable-ops-executed-p: T
+;; SR FLAGS AFFECTED: moe-p: T
 (defclass op/compute-and-emit-collisions (op) ())
 (defun op/compute-and-emit-collisions-p (op)
   (typep op 'op/compute-and-emit-collisions))
@@ -162,17 +162,17 @@
 (defun op/recompilations-p (op)
   (typep op 'op/recompilations))
 
-;; SR FLAGS AFFECTED: mutable-ops-executed-p: T
+;; SR FLAGS AFFECTED: moe-p: T
 (defclass op/make-component (op) ())
 (defun op/make-component-p (op)
   (typep op 'op/make-component))
 
-;; SR FLAGS AFFECTED: mutable-ops-executed-p: T
+;; SR FLAGS AFFECTED: moe-p: T
 (defclass op/make-actor (op) ())
 (defun op/make-actor-p (op)
   (typep op 'op/make-actor))
 
-;; SR FLAGS AFFECTED: mutable-ops-executed-p: T
+;; SR FLAGS AFFECTED: moe-p: T
 (defclass op/make-prefab (op) ())
 (defun op/make-prefab-p (op)
   (typep op 'op/make-prefab))
@@ -218,21 +218,19 @@
    (%reap-p :accessor reap-p
             :initarg :reap-p
             :initform nil)
-   ;; TODO: Reconcile this and below into one flag
-   (%mutable-ops-executed-p :accessor mutable-ops-executed-p
-                            :initarg :mutable-ops-executed-p
-                            :initform nil)
-   ;; Did any ops (of a certain subset of ops) _complete_ execution?
-   (%ops-executed-p :accessor ops-executed-p
-                    :initarg :ops-executed-p
-                    :initform nil)))
+
+   ;; Mutable Operation Expected
+   ;; This means that an operation that will cause a future change to the
+   ;; actors/components/scene tree has been put into the ops.
+   (%moe-p :accessor moe-p
+           :initarg :moe-p
+           :initform nil)))
 
 (u:define-printer (status strm)
-  (format strm "des-req-p: ~A, reap-p: ~A, ops-exec-p: ~A, mut-ops-ex-p: ~A"
+  (format strm "des-req-p: ~A, reap-p: ~A, moe-p: ~A"
           (destroy-requested-p status)
           (reap-p status)
-          (ops-executed-p status)
-          (mutable-ops-executed-p status)))
+          (moe-p status)))
 
 (defun make-status (&rest args)
   (apply #'make-instance 'status args))
@@ -373,12 +371,11 @@
 ;;
 (defclass quack ()
   (;; registers
-   (%fc :accessor fc :initform nil) ;; frame cursor context
+   (%sr :accessor sr :initform nil) ;; status flags
    (%op :accessor op :initform nil) ;; operation currently executing
    (%cc :accessor cc :initform nil) ;; cursor context for executing operation
-   (%sr :accessor sr :initform nil) ;; status flags
-
    (%mc :accessor mc :initform nil) ;; current mutation phase cursor context
+   (%fc :accessor fc :initform nil) ;; frame cursor context
 
    ;; DList of ops to execute.
    (%ops :accessor ops
@@ -399,8 +396,8 @@
     (assert (zerop (dll:length ops)))
 
     (let* ((cursor-prologue (make-op 'op/cursor :name :prologue))
-           (cursor-recomp (make-op 'op/cursor :name :recompilation))
            (cursor-eouf (make-op 'op/cursor :name :end-of-user-frame))
+           (cursor-recomp (make-op 'op/cursor :name :recompilation))
            (cursor-eof (make-op 'op/cursor :name :end-of-frame))
            (new-fc (make-cursor-context cursor-eof cursor-eouf cursor-prologue
                                         cursor-recomp)))
@@ -581,7 +578,7 @@
     ;; This generates calls into the user code, we can either assume the
     ;; mutation would happen, or have one of the op insertion calls in the API
     ;; below set it. Figure it out.
-    (setf (mutable-ops-executed-p sr) T)
+    (setf (moe-p sr) T)
     ))
 
 ;; ----------------------------------
@@ -618,7 +615,7 @@
 
       ;; TODO: Should this be in the API below to notify the CPU when something
       ;; was ACTUALLY inserted into the mutable state?
-      (setf (mutable-ops-executed-p sr) T))))
+      (setf (moe-p sr) T))))
 
 ;; ----------------------------------
 
@@ -642,13 +639,14 @@
     ;; (mutation requiring operations) have been executed since the
     ;; last creation of the mutation-phase context.
     (when (eq (behavior op) :sense)
-      (when (null (mutable-ops-executed-p sr))
+      (when (null (moe-p sr))
         ;; If no mutable ops had executed, then clear the MC and we're done
         ;; constructing new mutation phases.
         (setf mc nil)
         (format t "Completed mutation phases!~%")
         (return-from execute-op/construct-mutation-phase nil)))
 
+    (op/construct-mutation-phase quack :sense)
 
     (let* ((cursor-prefabs (make-op 'op/cursor :name :mut-prefabs))
            (cursor-parenting (make-op 'op/cursor :name :mut-parenting))
@@ -682,23 +680,10 @@
                    :target (location (lookup-cursor fc :end-of-user-frame)))
        )
 
-      ;; TODO: Should this actually go first or something like it?
-      ;;
-      ;; And push the op which clears the mutation context right now. so it
-      ;; ends up in the right place. TODO: We need some sort of decision op to
-      ;; decide if another mutation phase is warranted.  Probably something
-      ;; gets set in SR that indicates there were ops that could need
-      ;; it. Maybe, we have an op JUST BEFORE the mutation phase which clears a
-      ;; flag, then ops set the flag, then another one that creates another
-      ;; mutation phase of the flag was set, and doesn't if cleared. THat meant
-      ;; there were no operations in the mutation phase so the generation can
-      ;; stop.
-
-      (op/construct-mutation-phase quack :sense)
 
       ;; set the mutation register to the newly created mutation context
       (setf mc new-mc
-            (mutable-ops-executed-p sr) NIL))))
+            (moe-p sr) NIL))))
 
 
 ;; ----------------------------------
@@ -801,4 +786,8 @@
   nil)
 
 (defmethod destroy ((self actor))
+  nil)
+
+(defun make-prefab (prefab-name)
+  (declare (ignore prefab-name))
   nil)
