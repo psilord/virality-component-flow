@@ -381,3 +381,78 @@
 ;; NOTICE: An operation has a scope about who it is going to affect (an actor
 ;; and it components and it descendants recursively (in typedag order) OR *all*
 ;; components in typedag order) _and_ operations are themselves ordered.
+
+
+
+
+;; -----------------------------------------------------------------------
+
+
+
+
+;; Next time:
+;; Complete understanding of destroy operation.
+;; Simulate make-prefab first and the nursery.
+
+;; Explore enter/exit events.
+
+;; Implement lambda operation and lambda closures for operations.
+;; Possibly merge v:enable and v:enable-register in a better way.
+;;
+;; Actually emulate component/actor system.
+;; Resolve the cursor-context and frame-cursors _key_ API. Should the
+;; cursor-context be more ornate?
+;; Implement a bundle with sorting on the phases.
+;; Define the semantics and concrete understanding of _Domains_.
+;; ENsure ordering between operations is what we believe we need.
+;;
+;; <psilord> Wow! I just realized we can build a gdb like interface for
+;;        quack. Like, you can next over an operation, or step into one and
+;;        watch it call the bundles on all the components, etc, etc,
+;;        etc. "break on any phase emitting an disable" "break when attempting
+;;        to enable >this< actor.   [01:09]
+;;
+;; <psilord> Theoretically, we can have an honest to god interrupt vector
+;;        specification. Like, if ops failed to execute (in a BAD way), then
+;;        call this user function that isn't a part of any actor or component.
+;;                                                                      [01:12]
+;; possibly merge some of this together.
+
+
+;; Tentative Bundle and behavior specifications
+;;
+;; (v:define-bundle :enable
+;;    ((:register (:network :audio :collision))
+;;     :pre
+;;     :default
+;;     (thingy ())
+;;     :post))
+;;
+;;(v:define-bundle :disable
+;;    (:pre
+;;     :default
+;;     :post
+;;     (:deregister (:collision :audio :network))))
+;;
+;;(v:define-bundle foobar
+;;    (:pre
+;;     :default
+;;     :post
+;;     (qux (:default))))
+;;
+;; user writes on their component.
+;;(v:define-behavior :enable (:register :collision) ((self comp-type))
+;;  nil)
+;;
+;;(v:define-behavior :enable (thingy) ((self comp-type))
+;;  nil)
+;;
+;;(v:define-behavior :enable :default ((self comp-type))
+;;  nil)
+;;
+;;(v:define-behavior foobar (qux :default) ((self comp-type))
+;;  nil)
+;;
+;; user defined bundle for their own game.
+;;(define-bundle-order foo:thingy
+;;    (:pre :default :post))

@@ -19,13 +19,14 @@
              :initform nil)
    (%state :accessor state
            :initarg :state
-           :initform :initialize)
+           :initform :unknown)
    (%ttl-p :accessor ttl-p
-           :initarg :ttl
+           :initarg :ttl-p
            :initform nil)
    (%ttl :accessor ttl
          :initarg :ttl
          :initform 0)))
+
 
 (defclass actor (kernel)
   ((%components :reader components
@@ -45,11 +46,14 @@
 
 (defclass core ()
   ((%scene-tree :reader scene-tree)
+   (%context :accessor context
+             :initarg :context
+             :initform nil)
    (%tables :reader tables
             :initform nil)
-   (%quack :reader quack
+   (%quack :accessor quack
            :initarg :quack
-           :initform nil)))
+           :initform (make-quack))))
 
 (defclass context ()
   ((%core :reader core
@@ -57,6 +61,39 @@
 
 (defun make-context (core)
   (setf (slot-value core '%context) (make-instance 'context :core core)))
+
+(defun make-core ()
+  (let ((core (make-instance 'core)))
+    (make-context core)
+    core))
+
+
+(defclass transform (component)
+  ((%parent :accessor parent
+            :initarg :parent
+            :initform :universe)
+   (%children :accessor children
+              :initarg :children
+              :initform nil)
+
+   ;; Used for compute-physics
+   (%data :accessor data
+          :initarg :data
+          :initform 0)))
+
+(defun make-transform ()
+  (make-instance 'transform))
+
+(defun add-child (parent-transform child-transform)
+  (pushnew child-transform (children parent-transform))
+  (setf (parent child-transform) parent-transform))
+
+(defun remove-child (parent-transform child-transform)
+  (setf (children parent-transform)
+        (remove-if (lambda (x) (eq x child-transform))
+                   (children parent-transform))
+
+        (parent child-transform) nil))
 
 ;; -----------------------------------------------------------------------
 
@@ -73,6 +110,7 @@
   ;; cursors are nodes (in some data structure) containing op/cursor
   ;; instances.
   (let ((ctx (make-instance 'cursor-context)))
+
     ;; TODO: A HACK to define a known cursor API, this must be made true later
     (setf (u:href (cursors ctx) :continuation) (first cursors))
 
@@ -81,6 +119,11 @@
     ctx))
 
 (defun lookup-cursor (cursor-context name)
+  ;; TEMPORARY FIX: For now, we check a constant list of cursor names
+  (assert
+   (find name '(:prologue :end-of-user-frame :recompilation :end-of-frame
+                :mut-prefabs :mut-parenting :mut-aded :mut-destroy
+                :continuation)))
   (u:href (cursors cursor-context) name))
 
 (defun add-cursor (cursor-context cursor)
@@ -236,100 +279,28 @@
   (apply #'make-instance 'status args))
 
 
+;; -----------------------------------------------------------------------
 
+(defclass act/comp-db ()
+  ((%actors :reader actors
+            :initform (u:dict #'eq))
+   ;; TODO: Thees components need a real think about how to organize them.
+   (%components :reader components
+                :initform (u:dict #'eq))))
+
+(defclass nursery (act/comp-db) ())
+
+(u:define-printer (nursery strm)
+  (format strm "actors: ~S components: ~S"
+          (u:hash->plist (actors nursery))
+          (u:hash->plist (components nursery))))
+
+
+
+(defun make-nursery ()
+  (make-instance 'nursery))
 
 ;;; Operations
-
-;; Component requests
-;; putative
-
-(defun quack-enqueue (thing stuff)
-  (declare (ignore thing stuff))
-  nil)
-
-(defun make-component (context component-type
-                       &optional (modifier (constantly nil)))
-
-  (let* (#++(core (core context))
-         (component (make-instance component-type :context context))
-         (op (make-op 'op/make-component
-                      :component component
-                      :modifier modifier)))
-    (quack-enqueue (quack context) op)
-    ;; NOTE: This is a reference to the component only. It is not set up. The
-    ;; user can only treat this return value as a reference and must not access
-    ;; any slots in it _this frame_.
-    component))
-
-
-
-;; Next time:
-;; Complete understanding of destroy operation.
-;; Simulate make-prefab first and the nursery.
-
-;; Explore enter/exit events.
-
-;; Implement lambda operation and lambda closures for operations.
-;; Possibly merge v:enable and v:enable-register in a better way.
-;;
-;; Actually emulate component/actor system.
-;; Resolve the cursor-context and frame-cursors _key_ API. Should the
-;; cursor-context be more ornate?
-;; Implement a bundle with sorting on the phases.
-;; Define the semantics and concrete understanding of _Domains_.
-;; ENsure ordering between operations is what we believe we need.
-;;
-;; <psilord> Wow! I just realized we can build a gdb like interface for
-;;        quack. Like, you can next over an operation, or step into one and
-;;        watch it call the bundles on all the components, etc, etc,
-;;        etc. "break on any phase emitting an disable" "break when attempting
-;;        to enable >this< actor.   [01:09]
-;;
-;; <psilord> Theoretically, we can have an honest to god interrupt vector
-;;        specification. Like, if ops failed to execute (in a BAD way), then
-;;        call this user function that isn't a part of any actor or component.
-;;                                                                      [01:12]
-;; possibly merge some of this together.
-
-
-;; Tentative Bundle and behavior specifications
-;;
-;; (v:define-bundle :enable
-;;    ((:register (:network :audio :collision))
-;;     :pre
-;;     :default
-;;     (thingy ())
-;;     :post))
-;;
-;;(v:define-bundle :disable
-;;    (:pre
-;;     :default
-;;     :post
-;;     (:deregister (:collision :audio :network))))
-;;
-;;(v:define-bundle foobar
-;;    (:pre
-;;     :default
-;;     :post
-;;     (qux (:default))))
-;;
-;; user writes on their component.
-;;(v:define-behavior :enable (:register :collision) ((self comp-type))
-;;  nil)
-;;
-;;(v:define-behavior :enable (thingy) ((self comp-type))
-;;  nil)
-;;
-;;(v:define-behavior :enable :default ((self comp-type))
-;;  nil)
-;;
-;;(v:define-behavior foobar (qux :default) ((self comp-type))
-;;  nil)
-;;
-;; user defined bundle for their own game.
-;;(define-bundle-order foo:thingy
-;;    (:pre :default :post))
-
 
 ;; Registers:
 ;; FC (frame Context: :end-of-frame, ...)
@@ -349,12 +320,14 @@
 ;; and off logging between operations in their code, etc, etc.
 ;;
 (defclass quack ()
-  (;; registers
+  ((%core :accessor core)
+   ;; registers
    (%sr :accessor sr :initform nil) ;; status flags
    (%op :accessor op :initform nil) ;; operation currently executing
    (%cc :accessor cc :initform nil) ;; cursor context for executing operation
    (%mc :accessor mc :initform nil) ;; current mutation phase cursor context
    (%fc :accessor fc :initform nil) ;; frame cursor context
+   (%nu :accessor nu :initform nil) ;; nursery
 
    ;; DList of ops to execute.
    (%ops :accessor ops
@@ -366,6 +339,15 @@
 (defun make-quack ()
   (make-instance 'quack))
 
+(defun init-sr-register (quack)
+  (with-quack-registers (sr) quack
+    (setf sr (make-status))
+    quack))
+
+(defun init-nu-register (quack)
+  (with-quack-registers (nu) quack
+    (setf nu (make-nursery))
+    quack))
 
 (defun init-fc-register (quack)
   ;; NOTE: We need this because we need valid initial cursor contexts that must
@@ -402,10 +384,6 @@
 
       quack)))
 
-(defun init-sr-register (quack)
-  (with-quack-registers (sr) quack
-    (setf sr (make-status))
-    quack))
 
 ;; NOTE: make cursor pool so we can reuse them without GC as much.
 
@@ -416,10 +394,13 @@
 
 
 (defun doit ()
-  (let ((quack (make-quack)))
+  (let* ((core (make-core))
+         (quack (quack core)))
 
-    ;; Do ONCE--cannot be an operation
+    ;; Do ONCE--cannot be an operation.
+    (setf (core quack) core)
     (init-sr-register quack)
+    (init-nu-register quack)
 
     ;; Prolly do the below each frame.
 
@@ -438,7 +419,10 @@
     (op/compute-and-emit-collisions quack)
     (op/bundle quack :garden 'physics-update)
     (op/bundle quack :garden 'update)
+
+
     (op/bundle quack :garden 'render)
+
 
     ;; Keep Going! (Namely, see if we need to add more mutation cursors
     ;; as long as there are ops possible to use them.)
@@ -452,10 +436,10 @@
     quack))
 
 (defun quack-execute-op (quack)
-  (with-quack-registers (op fc cc sr mc ops) quack
+  (with-quack-registers (op fc cc sr mc nu ops) quack
     (format t "========================================================~%")
-    (format t " SR: ~S~% OP: ~S~% CC: ~S~% MC: ~S~% FC: ~S~%~%"
-            sr op cc mc fc)
+    (format t " SR: ~S~% OP: ~S~% CC: ~S~% MC: ~S~% FC: ~S~% NU: ~S~%~%"
+            sr op cc mc fc nu)
 
     (cond ;; Could be simplified in a data driven table or defmethods.
       ((op/cursor-p op)
@@ -479,9 +463,14 @@
       ((op/bundle-p op)
        (execute-op/bundle quack))
 
+      ((op/make-actor-p op)
+       (execute-op/make-actor quack))
+
+      ((op/make-component-p op)
+       (execute-op/make-component quack))
+
       (t
-       (format t "Unknown op: ~S~%" op)
-       nil))
+       (error "Unknown op: ~S~%" op)))
 
     (format t "~%-- After Op Execution:~%~%")
     (emit-ops ops "Current Op Set")
@@ -579,13 +568,17 @@
 (defun execute-op/bundle (quack)
   (with-quack-registers (fc op cc sr mc ops) quack
     (format t " Executing ~S bundle~%" (bundle op))
-    (let ((bundle (bundle op)))
+    (let ((bundle (bundle op))
+          (context (context (core quack))))
       ;; TODO: Make this data driven to pick the bundle shit out of a
       ;; table and then execute it automatically on the supplied domain.
       (case bundle
         (physics-update
          nil)
         (update
+         ;; act like user code in this bundle...
+         (make-actor context)
+         (make-component context 'transform)
          nil)
         (render
          nil)
@@ -682,6 +675,73 @@
 
 ;; ----------------------------------
 
+(defun op/make-actor (quack actor)
+  (with-quack-registers (ops sr cc mc fc) quack
+    (let ((new-op (make-op 'op/make-actor :domain actor))
+          (insert-cursor
+            (cond
+              (cc
+               (format t "Selected CC~%")
+               (lookup-cursor cc :continuation))  ;; don't have good API
+              (mc
+               (format t "Selected MC~%")
+               (lookup-cursor mc :mut-prefabs))
+              (fc
+               (format t "Selected FC~%")
+               (lookup-cursor fc :end-of-user-frame))
+              (t
+               (error "CC MC FC are not set!")))))
+
+      (assert insert-cursor)
+
+      (dll:insert ops new-op
+                  :where :before
+                  :target (location insert-cursor))
+
+      (setf (moe-p sr) t)
+      quack)))
+
+(defun execute-op/make-actor (quack)
+  (with-quack-registers (op nu) quack
+    (let* ((actor (domain op)))
+      (format t "Executing op/make-actor with domain ~S~%" actor)
+      (setf (u:href (actors nu) actor) actor)
+      )))
+
+;; ----------------------------------
+
+(defun op/make-component (quack component)
+  (with-quack-registers (ops sr cc mc fc) quack
+    (let ((new-op (make-op 'op/make-component :domain component))
+          (insert-cursor
+            (cond
+              (cc
+               (lookup-cursor cc :continuation))  ;; don't have good API
+              (mc
+               (lookup-cursor mc :mut-prefabs))
+              (fc
+               (lookup-cursor fc :end-of-user-frame))
+              (t
+               (error "CC MC FC are not set!")))))
+
+      (assert insert-cursor)
+
+      (dll:insert ops new-op
+                  :where :before
+                  :target (location insert-cursor))
+
+      (setf (moe-p sr) t)
+      quack)))
+
+(defun execute-op/make-component (quack)
+  (with-quack-registers (op nu) quack
+    (let ((component (domain op)))
+      (format t "Executing op/make-component with domain ~S~%" component)
+      (setf (u:href (components nu) component) component)
+      )))
+
+;; ----------------------------------
+
 
 ;; NOTE: Left two examples of operations yet to be converted that push cursors
 ;; which will be set up in the CC cursor-context register in addition to the FC
@@ -703,9 +763,6 @@
                       :where :before
                       :target insert-location))
     quack))
-
-
-
 
 (defun make-op/disable (quack insertion-cursor)
   (let* ((ops (ops quack))
@@ -730,6 +787,19 @@
 
 
 ;; Component requests
+(defun make-component (context component-type
+                       &optional (modifier (constantly nil)))
+  (let* ((quack (quack (core context)))
+         (comp (make-instance component-type
+                              :context context
+                              :state :pre-init
+                              :ttl-p nil
+                              :type component-type
+                              :initializer modifier)))
+
+    (op/make-component quack comp)
+    comp))
+
 (defmethod enable ((self component))
   nil)
 
@@ -739,10 +809,12 @@
 (defmethod destroy ((self component))
   nil)
 
-;; Actor requests
+;; Actor
 (defun make-actor (context)
-  (declare (ignore context))
-  nil)
+  (let ((quack (quack (core context)))
+        (actor (make-instance 'actor :state :pre-init)))
+    (op/make-actor quack actor)
+    actor))
 
 (defun spawn-actor (actor)
   (declare (ignore actor))
@@ -767,6 +839,6 @@
 (defmethod destroy ((self actor))
   nil)
 
-(defun make-prefab (prefab-name)
-  (declare (ignore prefab-name))
+(defun make-prefab (context prefab-name)
+  (declare (ignore context prefab-name))
   nil)
