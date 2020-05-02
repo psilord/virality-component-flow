@@ -419,10 +419,7 @@
     (op/compute-and-emit-collisions quack)
     (op/bundle quack :garden 'physics-update)
     (op/bundle quack :garden 'update)
-
-
     (op/bundle quack :garden 'render)
-
 
     ;; Keep Going! (Namely, see if we need to add more mutation cursors
     ;; as long as there are ops possible to use them.)
@@ -492,6 +489,9 @@
 
 (defun execute-op/cursor (quack)
   (with-quack-registers (fc op) quack
+    ;; TODO: This needs to know which register to remove the cursor from!
+    ;; Currently there is possibility that a cursor with the same name in
+    ;; another cursor context can illegally be removed from fc.
     (remove-cursor fc op)
     (format t " Removed cursor: ~(~S~)~%" (name op))))
 
