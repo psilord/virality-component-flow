@@ -681,13 +681,10 @@
           (insert-cursor
             (cond
               (cc
-               (format t "Selected CC~%")
                (lookup-cursor cc :continuation))  ;; don't have good API
               (mc
-               (format t "Selected MC~%")
                (lookup-cursor mc :mut-prefabs))
               (fc
-               (format t "Selected FC~%")
                (lookup-cursor fc :end-of-user-frame))
               (t
                (error "CC MC FC are not set!")))))
