@@ -307,6 +307,7 @@
 ;; previously created actors, etc.
 ;; :additive-root-depth
 ;; :additive-root-breadth
+;; :additive (purely executed in terms of when added to scene tree/actor)
 ;; :flat (components first in typedag order, then actors)
 ;; :additive-leaf-start
 ;;    (1. Take all leaves 2. sort by additive. 3 remove first. 4 repeat)
