@@ -353,8 +353,8 @@
 
 
 ;; Entailment Description {x, y, z, ...} -> x entails y entails z entails ...
-;; {actor4, actor3, actor0}
-;; {actor2, actor1, actor0}
+;; {actor0, actor3, actor4}
+;; {actor0, actor1, actor2}
 
 
 ;; list of entry point domains into the domain of actor0 for each actor
