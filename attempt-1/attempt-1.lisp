@@ -288,14 +288,138 @@
    (%components :reader components
                 :initform (u:dict #'eq))))
 
+;; Requirements for act/comp-db
+;; 1. Components must be segmented by type (according to typedag). HARD
+;; 2. Store in sorting order. (draw order for example)
+;; 3. We must enumerate the sorting keys that we're gonna support and how
+;; those keys are represented.
+;; 4. Figure out domain structure.
+
+;; typeorder: <B C A F E D>
+;; <ob/bundle: enable, domain Actor0, :root-to-leaves>
+
+;; Traversal Discipline order of changes (properties of a bundle traversal)
+;;
+;; :layer/additive-root-start (0 1 2 10 3 4 5 6 7 8 9 11)
+;; :layer/additive-leaf-start (9 11 7 8 3 4 5 6 1 2 10 0)
+;; Additive order is thought of like (left-to-right, top-to-bottom) when
+;; reading prefabs, and literal adding order of actors and components to
+;; previously created actors, etc.
+;; :additive-root-depth
+;; :additive-root-breadth
+;; :flat (components first in typedag order, then actors)
+;; :additive-leaf-start
+;;    (1. Take all leaves 2. sort by additive. 3 remove first. 4 repeat)
+;; :additive-leaf-group-start
+;;    (1. Take all leaves 2. sort by additive. 3 remove all leaves. 4 repeat)
+;;
+;; More explanation: Integers are actors added into a scene tree by the
+;; cardinal order of the integer.
+;;
+;; Domain Descriptions in relation to Actor hierarchy.
+;; (Note: lists after are additive-breadth.
+;;         0
+;;    1     2     10
+;;  3  4   6   5
+;;      7   8
+;;    11     9
+;; Additive breadth example below
+;; (when a node is expanded, order by the additive order for that node
+;; being expanded.)
+;;
+;; domain <0>: Actor0
+;;  component0: A
+;;  component1: A
+;;  component2: B
+;;  component3: C :first
+;;  component4: D
+;;  domain <1>: Actor1
+;;    component5: A :default
+;;    component8: B :default
+;;    component7: C :third
+;;    domain<2>: Actor2
+;;      component6: B :default
+;;      component9: C :second
+;;      component10: F :default
+;;  domain <3>: Actor3
+;;    component11: A
+;;    component12: B
+;;    component13: E
+;;    domain<4>: Actor4
+;;      component14: B
+;;      component15: C :second
+;;      component16: F
+
+
+;; Entailment Description {x, y, z, ...} -> x entails y entails z entails ...
+;; {actor4, actor3, actor0}
+;; {actor2, actor1, actor0}
+
+
+;; list of entry point domains into the domain of actor0 for each actor
+;; (actor0 -> (actor0 (actor1 (actor2)) (actor3 (actor4)))
+;;  actor1 -> (actor1 (actor2))
+;;  actor2 -> (actor2)
+;;  actor3 -> (actor3 (actor4))
+;;  actor4 -> (actor4))
+
+;; -------------------------------------------------------------
+
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; multicolumn sort order: typedag, sort-mixin, traversal-discipline
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; The structure of sort-mixin is unknown currently, can the user add more
+;; columns?
+
+;; Example Domain: actor 1
+;; Sort by column one: typedag sort (alphabetical type)
+;;A : (5)
+;; B : (8 6)
+;; C : (7 9)
+;; F : (10)
+
+;; Sort by column two: sort-mixin (:default :second :third)
+;; A : (:default: (5))
+;; B : (:default: (8 6))
+;; C : (:second: (9) :third (7))
+;; F : (:default: (10))
+
+;; Sort by column three: traversal-discipline (:layer/additive (as example))
+;; td: is traversal-discipline type
+;; A : (:default: (:td: 5))
+;; B : (:default: (:td: (6 8))) ;; cause 6 was added before 8
+;; C : (:second: (:td: (9)) :third (:td (7)))
+;; F : (:default: (:td: (10)))
+
+;; Final order is: 5 6 8 9 7 10
+
+;; -------------------------------------------------------------
+
+;; Example Domain: actor 2
+;; A: nil
+;; B: (6)
+;; C: (9)
+;; F: (10)
+
+;; The second and third column sorts are noops, SO:
+
+;; Final order is: 6 9 10.
+
+;; -------------------------------------------------------------
+
+;; least-entailed ( [5 8 7] [6 9 10]) most-entailed
+
+;; CRITICAL WARNING: Ensure that the sorting final outcome of a inner domain
+;; preserved in the final sort of a domain that entails it!!!!!
+
+
 (defclass nursery (act/comp-db) ())
 
 (u:define-printer (nursery strm)
   (format strm "actors: ~S components: ~S"
           (u:hash->plist (actors nursery))
           (u:hash->plist (components nursery))))
-
-
 
 (defun make-nursery ()
   (make-instance 'nursery))
