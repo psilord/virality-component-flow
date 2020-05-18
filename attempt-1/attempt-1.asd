@@ -7,8 +7,8 @@
   :version "0.0.1"
   :serial t
   :depends-on (#:alexandria
-	       #:golden-utils
 	       #:queues
-	       #:doubly-linked-list)
+	       #:net.mfiano.lisp.golden-utils
+	       #:net.mfiano.lisp.algae)
   :components ((:file "package")
                (:file "attempt-1")))
