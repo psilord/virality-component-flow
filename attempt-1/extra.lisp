@@ -388,9 +388,11 @@
 ;; -----------------------------------------------------------------------
 
 
-
-
 ;; Next time:
+;; Fully understand, Concretize, and Implement the entailment-tree.
+;;   See if one entailment-tree or one per type makes a difference in size of
+;;   them, number of cookies, etc, etc.
+
 ;; Complete nursery and >>> component sorting <<<.
 ;; Implement bundle definition and storage and execution.
 ;; Implement attach/detach

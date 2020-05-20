@@ -162,6 +162,7 @@
 (u:define-printer (op/cursor strm)
   (format strm "~(~S~)" (name op/cursor)))
 
+
 ;; SR FLAGS AFFECTED: moe-p: T
 (defclass op/bundle (op)
   ((%bundle :accessor bundle
@@ -350,6 +351,58 @@
 ;;      component14: B
 ;;      component15: C :second
 ;;      component16: F
+
+;; :universe A B C D E F
+
+;; 0 <- 1 <- 2
+
+;;                    'A, 'B, 'C
+;;              Z0   [77, 32, 23] <- priority queue? (heap as an array)
+;;              Z1   ['B, 'C]
+;;              Z2   ['C]
+
+
+;;     0        1        2
+;;     A        B        C
+;;    f g      j k      l r
+
+;; EXAMPLE 1
+;; Limits are not only numbers but also links.
+;; [X] is insertion order into a domain, assume [0] if unlabled.
+;; When deleting something if the range is into the same subdomain, we can
+;; delete more than one cookie as appropriate.
+;;
+;; domain0: Actor0
+;;  @(L0) @(L8) @(L9) 10 @(@(L15)) 30 @(L40[0]) @(L40[2]) @(L48) 50 @(L60) 70 @(@L71))
+;;  domain1: Actor1
+;;   0 9 @(L15) 20 @(L25) 40[0] @(L40[1]) 48 60 @(L71) 80
+;;   domain2: Actor2
+;;    15 25 40[1] 71 75
+;;  domain3:  Actor3
+;;   8 40[2] 41
+
+;; EXAMPLE 2
+;;
+;; Addition of components/domains only influences parents. The parent might
+;; need to inspect its children, but (it appears) it doesn't need to change
+;; them.
+;;
+;; domain 0: Actor 0
+;;  100 @(L300) @(L699) @(@(L700)) @(L701) @(L900) @(L2000) 3000
+;;  domain 1: Actor 1
+;;   300 @(L700) 2000
+;;   domain 2: Actor 2
+;;    700 900
+;;  domain 3: Actor 3
+;;   699
+;;  domain 4: Actor 4
+;;   701 <- N links to left of new cookie can cause N splits(?)
+
+
+;; domain -> entailment-tree
+
+;; NOTE: NEED to figure out the last two ordering.
+;; multicolumn sort order: typedag, sort-mixin, traversal-discipline
 
 
 ;; Entailment Description {x, y, z, ...} -> x entails y entails z entails ...
