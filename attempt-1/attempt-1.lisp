@@ -58,6 +58,9 @@
 
 (defgeneric (setf sorting-value) (new-val sorter))
 
+(defgeneric sorting-comparator (sorter)
+  (:method-combination append :most-specific-first))
+
 
 ;; TODO: Each inheritance layer of the sortable-mixin needs a key comparison
 ;; function to actually compare the keys and produce the -1 0 1 return code for
@@ -78,6 +81,9 @@
 (defmethod sorting-value append ((sorter sortable-mixin))
   (sort-form sorter))
 
+(defmethod sorting-comparator append ((sorter sortable-mixin))
+  (list #'<))
+
 ;; no writer for sortable-mixin, can't adjust the serial number!
 
 ;; TODO: FIgure out a new key representation that acts like append but uses
@@ -95,6 +101,8 @@
 (defmethod (setf sorting-value) (new-val (sorter render-order))
   (setf (render-sort-form sorter) new-val))
 
+(defmethod sorting-comparator append ((sorter render-order))
+  (list #'<))
 
 
 (defclass component (kernel sortable-mixin)
