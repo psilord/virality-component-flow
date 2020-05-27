@@ -2,6 +2,19 @@
 
 (in-package #:attempt-1)
 
+(defparameter *render-layers*
+  (u:dict #'eq
+          :background 10
+          :player 11
+          :foreground 12))
+
+(defparameter *render-layers-inverse*
+  (u:dict #'eql
+          10 :background
+          11 :player
+          12 :foreground))
+
+
 (defmacro with-quack-registers (registers instance &body body)
   `(with-accessors ,(mapcar (lambda (reg) (list reg reg)) registers)
        ,instance
@@ -34,7 +47,47 @@
    (%components-by-type :reader %components-by-type
                         :initform (u:dict #'eq))))
 
-(defclass component (kernel)
+(let ((serial-num 0))
+  ;; TODO: add a register/deregister to keep track of unused.
+  (defun get-new-serial-number ()
+    (prog1 serial-num
+      (incf serial-num))))
+
+(defgeneric sorting-value (sorter)
+  (:method-combination append :most-specific-first))
+
+(defgeneric (setf sorting-value) (new-val sorter))
+
+
+(defclass sortable-mixin ()
+  ((%list-of-avl-trees :accessor list-of-avl-trees)
+   (%sort-form :accessor sort-form
+               :initarg :sort-form
+               :initform (list (get-new-serial-number)))))
+
+(defmethod sorting-value append ((sorter sortable-mixin))
+  (sort-form sorter))
+
+;; no writer for sortable-mixin, can't adjust the serial number!
+
+;; TODO: FIgure out a new key representation that acts like append but uses
+;; eq or eql testing (like maybe each component of the append should go into a
+;; bit range in a bigint?)
+
+(defclass render-order (sortable-mixin)
+  ((%render-sort-form :accessor render-sort-form
+                      :initarg :render-sort-form
+                      :initform :background)))
+
+(defmethod sorting-value append ((sorter render-order))
+  (list (u:href *render-layers* (render-sort-form sorter))))
+
+(defmethod (setf sorting-value) (new-val (sorter render-order))
+  (setf (render-sort-form sorter) new-val))
+
+
+
+(defclass component (kernel sortable-mixin)
   ((%type :reader component-type
           :initarg :type)
    (%actor :accessor actor
@@ -66,6 +119,11 @@
   (let ((core (make-instance 'core)))
     (make-context core)
     core))
+
+
+(defclass render (component render-order)
+  ;; filled in by the engine code.
+  ())
 
 
 (defclass transform (component)
@@ -220,6 +278,14 @@
 (defclass op/make-prefab (op) ())
 (defun op/make-prefab-p (op)
   (typep op 'op/make-prefab))
+
+;; TODO: Implement me! (This may cause changes to the sorting API)
+;; If something wants to sort we make an op that goes after all mutation
+;; phases. This is so we don't adjust the sorting of the domains in the middle
+;; of a set of mutation phases.
+(defclass op/change-sort (op) ())
+(defun op/make-change-sort-p (op)
+  (typep op 'op/change-sort))
 
 
 ;; TODO: Candidate to change all below to op/bundle
@@ -467,6 +533,119 @@
 ;; CRITICAL WARNING: Ensure that the sorting final outcome of a inner domain
 ;; preserved in the final sort of a domain that entails it!!!!!
 
+;; Hash table :
+;; HT1 == COMPONENT-TYPE -> (TREE | SET)
+
+
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Implement this one, but only generate the domain trees on demand.  This
+;; allows only the ones that need to exist by the user's code to actually
+;; exist, and then if it becomes a problem we can understand the real use case.
+;; After make-prefab if we happen to force domain tree construction, we can
+;; know this and free it so the user doesn't have to pay it.
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; U     CtU           : A B C D E G F H I J K L M N Z
+;;  A0    A I N        : B C D E G F H J K L M Z
+;;   A1    D L M       : B C E G F H J K Z
+;;    B0   H J K B     : C E G F
+;;     B1  C E G F     :
+;;    B2   Z           :
+
+
+
+
+
+
+
+;; 00 in subdomain       :: T 1 for in domain
+;; 01 in current actor
+
+;; 10 in some parent domain :: NIL 0 for not in domain
+;; 11 not in domain
+
+;;         01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+;; U       Y' A  B  C  D  E  G  F  H  I  J  K  L  M  N  Z
+
+;;         10 01 00 00 00 00 00 00 00 01 00 00 00 00 01 00
+;;  A0    _Y  A' B  C  D  E  G  F  H  I' J  K  L  M  N' Z
+
+;;         10 10 00 00 01 00 00 00 00 10 00 00 01 01 10 00
+;;   A1   _Y _A  B  C  D' E  G  F  H _I  J  K  L' M'_N  Z
+
+;;         10 10 01 00 10 00 00 00 01 10 01 01 10 10 10 11
+;;    B0  _Y _A  B' C _D  E  G  F  H'_I  J' K'_L _M _N  Z
+
+;;         10 10 10 01 10 01 01 01 10 10 10 10 10 10 10 11
+;;     B1 _Y _A _B  C'_D  E' G' F'_H _I _J _K _L _M _N  Z
+
+;;         10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 01
+;;    B2  _Y _A _B _C _D _E _G _F _H _I _J _K _L _M _N  Z'
+
+;; ---------------------------------------------------------------------
+
+;;         1  1  1  1  1  1  1  1  1  1  1  1  1  1  1  1  1
+;; U       Y' A  B  C  D  E  G  F  H  I  J  K  L  M  N  Q  Z
+
+;;         0  1  1  1  1  1  1  1  1  1  1  1  1  1  1  1  1
+;;  A0    _Y  A' B  C  D  E  G  F  H  I' J  K  L  M  N' Q  Z
+
+;;         0  0  1  1  1  1  1  1  1  0  1  1  1  1  0  1  1
+;;   A1   _Y _A  B  C  D' E  G  F  H _I  J  K  L' M'_N  Q  Z
+
+;;         0  0  1  1  0  1  1  1  1  0  1  1  0  0  0  0  0
+;;    B0  _Y _A  B' C _D  E  G  F  H'_I  J' K'_L _M _N  Q  Z
+
+;;         0  0  0  1  0  1  1  1  0  0  0  0  0  0  0  0  0
+;;     B1 _Y _A _B  C'_D  E' G' F'_H _I _J _K _L _M _N  Q  Z
+
+;;         0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  1  1
+;;    B2  _Y _A _B _C _D _E _G _F _H _I _J _K _L _M _N  Q' Z'
+
+
+;; universe
+;;  parallax
+;;  7 objects
+;;  level
+;;   floors
+;;    400 objects
+;;   walls
+;;    400 objects
+;;   corners
+;;    400 objects
+;;   pickups
+;;    health
+;;     dozens objects
+;;    medicine-boxes
+;;     dozens objects
+;;   decorations/fringe
+;;    houseplants
+;;    windows
+;;   traps
+;;    100
+;;  lights
+;;   ~200 objects
+;;  player
+;;   5 deep
+
+;; U Ct0
+;;  A Ct1[s] Mesh0 Render0
+;;   B Ct2 Mesh1 Render1
+;;   C Ct3 Mesh2 Render2
+;;    D Ct4 Mesh3 Render3
+
+;; A Ct1' Mesh0 Render0 Mesh1 Render1 Mesh2 Render2 Mesh3 Render3
+
+
+;; U C0
+;;  A C1
+;;   B C2
+;;    C C3
+;;   D C4
+;;  E C5 / [C7 C6 C5 C8]
+;;   F C6
+;;   G C7
+;;   H C8
 
 (defclass nursery (act/comp-db) ())
 
