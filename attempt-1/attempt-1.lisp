@@ -59,6 +59,16 @@
 (defgeneric (setf sorting-value) (new-val sorter))
 
 
+;; TODO: Each inheritance layer of the sortable-mixin needs a key comparison
+;; function to actually compare the keys and produce the -1 0 1 return code for
+;; the sort. Then we use the right one for any particular type held in the
+;; domain tree. This needs to be written. We may be able to get away with a
+;; generic key sort function, but the items passed to it have to be the same
+;; "impedance", meanings two keys from the SAME sorting inheritance layer. Sort
+;; keys from different layers, say a sortable-mixin and a render order, are
+;; incomparable.
+
+
 (defclass sortable-mixin ()
   ((%list-of-avl-trees :accessor list-of-avl-trees)
    (%sort-form :accessor sort-form
