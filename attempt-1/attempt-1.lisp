@@ -53,10 +53,18 @@
     (prog1 serial-num
       (incf serial-num))))
 
-(defgeneric sorting-value (sorter)
+
+;; TODO: Remove the APPEND methods and replace them with aggregating named
+;; columns defined in each class. It COULD be a plist, or a hash table, or
+;; something like that. We might use a PROGN method with an outside function
+;; call/method to call the progn method and assemble all of the component
+;; pieces of the sorting columns into a valid sorting key. The sorting columns
+;; STILL need an ordering, even if they are stored in a hash table, etc.
+
+(defgeneric sorting-key (sorter)
   (:method-combination append :most-specific-first))
 
-(defgeneric (setf sorting-value) (new-val sorter))
+(defgeneric (setf sorting-key) (new-val sorter))
 
 (defgeneric sorting-comparator (sorter)
   (:method-combination append :most-specific-first))
@@ -74,35 +82,111 @@
 
 (defclass sortable-mixin ()
   ((%list-of-avl-trees :accessor list-of-avl-trees)
-   (%sort-form :accessor sort-form
-               :initarg :sort-form
-               :initform (list (get-new-serial-number)))))
+   (%key :accessor key
+         :initarg :key
+         :initform (list (get-new-serial-number)))))
 
-(defmethod sorting-value append ((sorter sortable-mixin))
-  (sort-form sorter))
+
+(defmethod sorting-key append ((sorter sortable-mixin))
+  (key sorter))
 
 (defmethod sorting-comparator append ((sorter sortable-mixin))
-  (list #'<))
+  `(,#'<))
+
+;; ((diff (all transform) (all tranform-child-deep))
+;;  -> (all render)
+;;  -> (splice dagname)
+;;  -> (all transform-child-deep) ) ;; trander
+
+;; transform -> foo -> bar -> qux -> transform-child-deep -> A
+;;                                                        -> B
+
+;; Something the player can regularly use in their comonent simply to get a
+;; sorted order for their component.
+(defclass sortable-order (sortable-mixin)
+  ((%sort-key :accessor sort-key
+              :initarg :sort-key
+              :initform 0)))
+
+(defmethod sorting-key append ((sorter sortable-order))
+  (key sorter))
+
+(defmethod sorting-comparator append ((sorter sortable-order))
+  `(,#'<))
 
 ;; no writer for sortable-mixin, can't adjust the serial number!
 
 ;; TODO: FIgure out a new key representation that acts like append but uses
 ;; eq or eql testing (like maybe each component of the append should go into a
-;; bit range in a bigint?)
+;; bit range in a bigint?) [But this is expensive.]
+
+;; TODO: Understand |3b|'s point of view for how to specify sorting order among
+;; these sortable classes:
+;;
+;;<|3b|> even easier if you specify a bunch of them at once  [23:48]
+;;<|3b|> (define-sort-order (sorting-mixin render-order render-order2
+;;       render-order3) (:y/b1 :a x/b0 :b :s)) or whatever  [23:49]
+;;<|3b|> or with ordering constraints
+;;<|3b|> ordering constraints would let superclasses specify requirements so you
+;;       couldn't accidentally swap :a and :b  [23:50]
+;;<|3b|> and can't remove/move serial #  [23:51]
+;;<|3b|> define-sort-order could introspect the listed classes somehow to see
+;;       which columns they provide, then generate the union-sorting-columns
+;;       methods, or whatever it ends up being internally  [23:52]
+;;<|3b|> it could be an preallocated array in the instance, with a protocol to
+;;       calculate the size of the array and the offsets of columns  [00:03]
+;;<|3b|> then the sorting dsl would expand to code that knows the offsets
+;;<|3b|> yeah, hash is probably better for prototyping  [00:04]
+;;<|3b|> though thinking about it might just store the key permanently and have
+;;       the overridable methods be "update-sorting-key" or whatever  [00:05]
+;;<|3b|> oh yeah, that was another thing about ordering constraints instead of
+;;       explicit dag, it could account for threading stuff  [00:06]
+
 
 (defclass render-order (sortable-mixin)
-  ((%render-sort-form :accessor render-sort-form
-                      :initarg :render-sort-form
-                      :initform :background)))
+  ((%render-key :accessor render-key
+                :initarg :render-key
+                :initform :background)))
 
-(defmethod sorting-value append ((sorter render-order))
-  (list (u:href *render-layers* (render-sort-form sorter))))
+(defmethod sorting-key append ((sorter render-order))
+  (list "foobar" (u:href *render-layers* (render-key sorter))))
 
-(defmethod (setf sorting-value) (new-val (sorter render-order))
-  (setf (render-sort-form sorter) new-val))
+(defmethod (setf sorting-key) (new-val (sorter render-order))
+  (setf (render-key sorter) new-val))
 
 (defmethod sorting-comparator append ((sorter render-order))
-  (list #'<))
+  `(,#'string< ,#'<))
+
+
+
+
+(defun higher-order-comparator (key-funcs)
+  "Return a function that compares two key lists given the key functions for
+each element in those lists."
+  (lambda (seq0 seq1)
+    (loop :for key :in key-funcs
+          :for s0 :in seq0
+          :for s1 :in seq1
+          ;; considered s0 is strictly < than s1
+          :when (funcall key s0 s1)
+            :return t
+          ;; considered s0 is strictly > than s1
+          :when (funcall key s1 s0)
+            :return nil
+          ;; considered s0 is strictly = to s1
+          ;; Defaults to nil...
+          )))
+
+;; testing junk
+(defun doit-sort (key-funcs key0 key1 &key (key #'identity))
+  (let ((box (list 0 0))
+        (comparator (higher-order-comparator key-funcs)))
+    (psetf (car box) key0
+           (cadr box) key1)
+    (sort box comparator :key key)))
+
+
+
 
 
 (defclass component (kernel sortable-mixin)
@@ -138,10 +222,54 @@
     (make-context core)
     core))
 
+;; (all render)
 
 (defclass render (component render-order)
   ;; filled in by the engine code.
   ())
+
+(defclass render-order2 (render-order)
+  ())
+
+(defclass render2 (render render-order2)
+  ())
+
+(defclass render-order3 (render-order)
+  ())
+
+(defclass render3 (render render-order3)
+  ())
+
+;; compomnent:       :s
+;; render:     :a :b :s
+;; render2: :x :a :b :s
+;; render3: :y :a :b :s
+
+;; (union-sorting-columns <sortable-mixin> <sortable-mixin>)
+;; -> (:a :b :s)
+
+;; (union-sorting-columns <sortable-mixin> <render-order>)
+;; -> (:x/B1 :a :b :s)
+
+;; (union-sorting-columns <sortable-mixin> <render-order2>)
+;; -> (:y/B0 :a :b :s)
+
+;; (union-sorting-columns <render-order2> <render-order2>)
+;; -> (:x :a :b :s)
+
+;; (union-sorting-columns <render-order2> <render-order3>)
+;; -> (:x/B1 :y/B0 :a :b :s)
+
+;; (union-sorting-columns <render-order3> <render-order3>)
+;; -> (:y :a :b :s)
+
+
+;; A render   = (:y/B1 :x/B1 :a/24 :b/43 :s/436)
+;; B render2b = (:y/B1 :x/22 :a/23 :b/43 :s/435)
+;; C render2a = (:y/B1 :x/23 :a/23 :b/43 :s/434)
+;; D render2c = (:y/B1 :x/23 :a/23 :b/43 :s/437)
+;; E render3a = (:y/11 :x/B1 :a/10 :b/22 :s/223)
+
 
 
 (defclass transform (component)
