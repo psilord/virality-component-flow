@@ -464,3 +464,130 @@
 ;; user defined bundle for their own game.
 ;;(define-bundle-order foo:thingy
 ;;    (:pre :default :post))
+
+
+;; This fucking works!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;; vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+
+;; i is the serial number, T is the lexographic type name (sort order from
+;; MOP?)[of the component]!
+
+;; root path one
+;; sorting-class SBase         ->   B B B B B B B T| |i|
+;; sorting-class Bar (SBase)   ->   r B B B B B B T| |i|
+;; sorting-class Qux (Bar)     ->   r B B B B B q T| |i|
+;; sorting-class Feh (Qux)     ->   r B d B B B q T| |i|
+;; sorting-class Sme (Feh)     ->   r B d B B a q T| |i|
+
+
+;; root path two
+;; sorting-class xxx (SBase)   ->   B B B B u B B T| |i|
+;; sorting-class yyy (Feh xxx) ->   r e d p u a q T| |i|
+;; sorting-class zzz (SBase)   ->   B B B B B B B T| |i|
+;; sorting-class aaa (SBase)   ->   B B B B B B B T| |i|
+;; sorting-class bbb (SBase)   ->   B B B B B B B T| |i|
+
+;; (defcomp A (SBase) ...)
+;; (defcomp B (SBase aaa) ...)
+
+;; (defcomp render (Bar) ...)
+;; (defcomp my-render (Qux) ...)
+;; (defcomp my-group-render (Feh) ...)
+
+;; r := :background :player :foreground
+;; q := :torso :head :leg :arm
+
+;; render          -> r     T i
+;; my-render       -> r   q T i
+;; my-group-render -> r d q T i
+
+;; typedag := (... -> (all render) (all foobar) -> ...)
+
+;; r0    -> :background <render> <0>)
+;; r1    -> :player <render> <10>)
+;; r2    -> :foreground <render> <100>)
+;; mr1   -> :player :torso <my-render> <1>)
+;; mr2   -> :player :head <my-render> <2>)
+;; mr3   -> :player :arm <my-render> <11>)
+;; mr4   -> :player :leg <my-render> <18>)
+;; mr5   -> :player :leg <my-render> <431>)
+;; mr6   -> :player :arm <my-render> <1932>)
+;; mgr1  -> :player 1 :torso <my-group-render> <101>)
+;; mgr2  -> :player 1 :head <my-group-render> <982>)
+;; mgr3  -> :player 1 :arm <my-group-render> <34>)
+;; mgr4  -> :player 1 :leg <my-group-render> <345>)
+;; mgr5  -> :player 1 :leg <my-group-render> <35>)
+;; mgr6  -> :player 1 :arm <my-group-render> <43>)
+;; mgr7  -> :background 3 :torso <my-group-render> <1101>)
+;; mgr8  -> :background 3 :head <my-group-render> <1982>)
+;; mgr9  -> :background 3 :arm <my-group-render> <134>)
+;; mgr10 -> :background 3 :leg <my-group-render> <1345>)
+;; mgr11 -> :background 3 :leg <my-group-render> <135>)
+;; mgr12 -> :background 3 :arm <my-group-render> <143>)
+;;
+;; ordering
+;; sorting-class Bar (SBase)   ->   r B B B B B B T| |i|
+;; sorting-class Qux (Bar)     ->   r B B B B B q T| |i|
+;; sorting-class Feh (Qux)     ->   r B d B B B q T| |i|
+
+;; order test left column of original order was lost, sorry.
+;;
+;; :background  d       q
+;; mgr7         r0      r0
+;; mgr8         mgr7    mgr7
+;; r0           mgr8    mgr8
+;; mgr9         mgr9    mgr10
+;; mgr12        mgr12   mgr11
+;; mgr11        mgr11   mgr9
+;; mgr10        mgr10   mgr12
+;;
+;; :player      d       q
+;; r1           r1      r1
+;; mgr1         mr4     mr1
+;; mr4          mr5     mr2
+;; mr5          mr1     mr4
+;; mgr4         mr2     mr5
+;; mgr5         mr3     mr3
+;; mr1          mr6     mr6
+;; mr2          mgr1    mgr1
+;; mgr2         mgr4    mgr2
+;; mgr3         mgr5    mgr4
+;; mr3          mgr2    mgr5
+;; mgr6         mgr3    mgr3
+;; mr6          mgr6    mgr6
+;;
+;; :forground   d       q
+;; r2           r2      r2
+;;
+;;
+;; ;; some notes
+;;
+;; FOO
+;; F0 = (:player B <id>)
+;; F1 = (:player B <id>)
+;;
+;; QUX
+;; C0  = (:player 0 :leg <id>)   3 i+K
+;; C1  = (:player 0 :arm <id>)   5 i+X
+;; C2  = (:player 0 :arm <id>)   5 i+Y
+;; C3  = (:player 0 :torso <id>) 2
+;; C4  = (:player 0 :leg <id>)   4 i+J
+;; C5  = ):player 0 :head <id>)  3
+;;
+;; C6  = (:player 1 :leg <id>)   3 i+K
+;; C7  = (:player 1 :arm <id>)   5 i+X
+;; C8  = (:player 1 :arm <id>)   5 i+Y
+;; C9  = (:player 1 :torso <id>) 2
+;; C10 = (:player 1 :leg <id>)   4 i+J
+;; C11 = ):player 1 :head <id>)  3
+;;
+;; D6 = (:background 3 :torso <id>) 0
+;; D7 = (:background 3 :head <id>)   1
+;;
+;;
+;;
+;; D6
+;; D7
+;; F0
+;; F1
+;; C0 - C5
