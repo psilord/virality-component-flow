@@ -1,4 +1,4 @@
-
+(in-package #:attempt-1)
 
 
 
@@ -591,3 +591,268 @@
 ;; F0
 ;; F1
 ;; C0 - C5
+
+
+
+
+;; A specific edge case from above, but new example sorting types.
+
+;;                  SBase
+;;                   |   \
+;;                  Feh    Foo
+;;                   \   /   |  \
+;;                     Meh   Bar  Qux
+
+;; sorting-class SBase          ->   t i
+;; sorting-class Feh (SBase)    ->   R S T L t i
+;; sorting-class Foo (SBase)    ->   Z t i
+;; sorting-class Bar (Foo)      ->   A Z B C t i
+;; sorting-class Qux (Foo)      ->   D E Z F t i
+;; sorting-class Meh (Feh Foo)  ->   R S T H Z L t i
+
+
+
+;; Example Linearization 1
+;; sorting-class SBase          ->                             t i
+;; sorting-class Feh (SBase)    ->   R S T            L        t i
+;; sorting-class Foo (SBase)    ->                  Z          t i
+;; sorting-class Bar (Foo)      ->                A Z     B C  t i
+;; sorting-class Qux (Foo)      ->            D E   Z   F      t i
+;; sorting-class Meh (Feh Foo)  ->   R S T H        Z L        t i
+;; TOTAL ORDER
+;; sorting-class SBase          ->                             t i
+;; sorting-class Foo (SBase)    ->                  Z          t i
+;; sorting-class Bar (Foo)      ->                A Z     B C  t i
+;; sorting-class Qux (Foo)      ->            D E   Z   F      t i
+;; sorting-class Feh (SBase)    ->   R S T            L        t i
+;; sorting-class Meh (Feh Foo)  ->   R S T H        Z L        t i
+
+
+
+;; Example Linearization 2
+;; sorting-class SBase          ->                                  t i
+;; sorting-class Feh (SBase)    ->        R S T            L        t i
+;; sorting-class Foo (SBase)    ->                       Z          t i
+;; sorting-class Bar (Foo)      ->                     A Z     B C  t i
+;; sorting-class Qux (Foo)      ->   D E                 Z   F      t i
+;; sorting-class Meh (Feh Foo)  ->        R S T H        Z L        t i
+;; TOTAL ORDER
+;; sorting-class SBase          ->                                  t i
+;; sorting-class Foo (SBase)    ->                       Z          t i
+;; sorting-class Bar (Foo)      ->                     A Z     B C  t i
+;; sorting-class Feh (SBase)    ->        R S T            L        t i
+;; sorting-class Meh (Feh Foo)  ->        R S T H        Z L        t i
+;; sorting-class Qux (Foo)      ->   D E                 Z   F      t i
+
+
+;; sorting-class SBase          ->                           p i
+;; sorting-class Foo (SBase)    ->                 Z         p i
+;; sorting-class Qux (Foo)      ->             D E Z F       p i
+;; sorting-class Feh (SBase)    ->     R S T           L     p i
+;; sorting-class Meh (Feh Foo)  ->     R S T H     Z   L     p i
+;; sorting-class Bar (Foo)      ->   A             Z     B C p i
+
+
+;; breadth first
+;;                                   R D S A E T H Z B F C L P I
+;; sorting-class SBase          ->                           p i
+;; sorting-class Foo (SBase)    ->                 Z         p i
+;; sorting-class Bar (Foo)      ->         A       Z B   C   p i
+;; sorting-class Qux (Foo)      ->     D     E     Z   F     p i
+;; sorting-class Feh (SBase)    ->   R   S     T           L p i
+;; sorting-class Meh (Feh Foo)  ->   R   S     T H Z       L p i
+
+;; depth first
+;;                                   D E R S T H A Z B C F L P I
+
+;; sorting-class SBase          ->                           p i
+;; sorting-class Foo (SBase)    ->                 Z         p i
+;; sorting-class Bar (Foo)      ->               A Z B C     p i
+;; sorting-class Feh (SBase)    ->       R S T             L p i
+;; sorting-class Meh (Feh Foo)  ->       R S T H   Z       L p i
+;; sorting-class Qux (Foo)      ->   D E           Z     F   p i
+
+;; (sorting-class-name (columns))
+
+;;#((MEH   (R S T H Z L P I))
+;;  (BAR   (    A Z B C P I))
+;;  (FEH   (    R S T L P I))
+;;  (QUX   (    D E Z F P I))
+;;  (FOO   (          Z P I))
+;;  (SBASE (            P I)))
+
+;; I   P   L   C   F   Z   B   T   H   S   E   A   R   D
+;; 0   1   2   3   4   6   5   8   7  11   9  10  13  12
+
+;; column order. I is in column 0
+;; 13 12 11 10 9 8 7 6 5 4 3 2 1 0
+;;  R  D  S  A E T H Z B F C L P I
+
+;; edge-table
+;; XXX -> YYY    means "XXX is to the right of YYY"
+;; I_0 -> P_1
+;; P_1 -> L_2 C_3 F_4 Z_6 NIL
+;; L_2 -> Z_6 T_8
+;; C_3 -> B_5
+;; F_4 -> Z_6
+;; Z_6 -> NIL H_7 E_9 A_10
+;; B_5 -> Z_6
+;; T_8 -> S_11
+;; H_7 -> T_8
+;; S_11 -> R_13
+;; E_9 -> D_12
+;; A_10 -> NIL
+;; R_13 -> NIL
+;; D_12 -> NIL
+
+;;edge table
+;; XXX -> YYY    means "XXX is to the left of YYY"
+;; P_1 -> I_0
+;; L_2 -> P_1
+;; C_3 -> P_1
+;; F_4 -> P_1
+;; Z_6 -> P_1 L_2 F_4 B_5
+;; NIL -> P_1 Z_6 A_10 R_13 D_12
+;; B_5 -> C_3
+;; T_8 -> L_2 H_7
+;; H_7 -> Z_6
+;; S_11 -> T_8
+;; E_9 -> Z_6
+;; A_10 -> Z_6
+;; R_13 -> S_11
+;; D_12 -> E_9
+
+
+;; 3b's idea of depth first assignment.
+;;edge table
+;; XXX -> YYY    means "XXX is to the left of YYY"
+;; P_1 -> I_0
+;; L_2 -> P_1
+;; C_4 -> P_1
+;; F_3 -> P_1
+;; Z_6 -> P_1 L_2 F_3 B_5
+;; NIL -> P_1 Z_6 A_7 R_11 D_13
+;; B_5 -> C_4
+;; T_9 -> L_2 H_8
+;; H_8 -> Z_6
+;; S_10 -> T_9
+;; E_12 -> Z_6
+;; A_7 -> Z_6
+;; R_11 -> S_10
+;; D_13 -> E_12
+
+;; 13 12 11 10 9 8 7 6 5 4 3 2 1 0
+;;  D  E  R  S T H A Z B C F L P I
+
+;; ensure assertions about edge table consistency in both tables are correct.
+
+(defun stats (shash edge-table col-assignment)
+  (let ((total-columns (hash-table-count shash)))
+    (format t "number of columns: ~A~%" total-columns)
+
+    (u:do-hash (col cnt shash)
+      (format t "Column: ~(~S~) : ~D~%" col cnt))
+
+    (format t "Edge-list:~%~{ ~A~%~}"  (u:hash->alist edge-table))
+
+    (format t "column assignments :~%~{ ~A~%~}"
+            (sort (u:hash->alist col-assignment) #'< :key #'cdr))
+
+    ))
+
+(defun linearize (db)
+  (let ((total-columns 0)
+        (shash (u:dict #'eq)))
+    ;; 1. Compute total number of columns & column frequency(?)
+    (loop :for (sc cols) :in db
+          :do (loop :for col :in cols
+                    :do (u:ensure-gethash col shash 0)
+                        (incf (u:href shash col))))
+    (setf total-columns (hash-table-count shash))
+
+    ;; 2. Sort sorting class by 1) number of columns, then 2) lexical type
+    (let ((db (sort db (lambda (left right)
+                         (destructuring-bind (lname lcols) left
+                           (destructuring-bind (rname rcols) right
+                             (cond
+                               ((= (length lcols) (length rcols))
+                                (string< lname rname))
+
+                               ((> (length lcols) (length rcols))
+                                T)
+
+                               (t
+                                nil))))))))
+
+      (format t "db =~%~{~A~%~}" db)
+
+      ;; 3a. Assemble the edge table.
+      ;; Here we construct a "LEFT is to the left of RIGHT" table
+      (let ((rev-cols (map 'vector (lambda (x) (reverse (second x))) db))
+            (edge-table (u:dict #'eq)))
+        (:printv rev-cols)
+        (u:while (notevery #'null rev-cols)
+          (loop :for idx :below (length rev-cols)
+                :when (aref rev-cols idx)
+                  :do
+                     (let ((right (pop (aref rev-cols idx)))
+                           (left (first (aref rev-cols idx))))
+                       (pushnew right (u:href edge-table left) :test #'eq))))
+
+        ;; 3b. Reverse the edge-table value lists.
+        (u:do-hash-keys (key edge-table)
+          (u:reversef (u:href edge-table key)))
+
+
+        ;; 4. Mark the nodes with a column number in a depth first search of
+        ;; the edge table. We stop searching when we hit a node that contains
+        ;; a column number and assign a increasing number on the way out.
+        ;; Also stop recursing when we find a node that is not in the table,
+        ;; which means it is a root node. NOTE: There should be only ONE root
+        ;; node in our sorting mixing use case. The root node should always
+        ;; be the serial-number for the sorting system.
+        (let ((col-assignment (u:dict #'eq))
+              (last-assigned-col-number 0))
+          (labels ((get-col-number ()
+                     (prog1 last-assigned-col-number
+                       (incf last-assigned-col-number)))
+
+                   (mark (node)
+
+                     ;; base case.
+                     (when (integerp (u:href col-assignment node))
+                       (return-from mark))
+
+
+                     (let ((rights (u:href edge-table node)))
+                       (dolist (right rights)
+                         (mark right))
+
+                       (when node
+                         (setf (u:href col-assignment node)
+                               (get-col-number))
+
+                         ;; assert that we've built a sound tree.
+                         (dolist (right rights)
+                           ;; TODO: If this fails, ensure to print out the
+                           ;; whole of the test case so we can find out why.
+                           (assert (> (u:href col-assignment node)
+                                      (u:href col-assignment right))))))))
+
+            (mark nil)
+
+            (stats shash edge-table col-assignment)
+            ))))))
+
+(defun gen-random-db (min-sort-classes max-sort-classes min-cols max-cols)
+  ;; TODO: make a random consistent sorting hierarchy and return it.
+  nil)
+
+(defun doit ()
+  (let ((db '((sbase (p i))
+              (foo (z p i))
+              (qux (d e z f p i))
+              (feh (r s t l p i))
+              (meh (r s t h z l p i))
+              (bar (a z b c p i)))))
+    (linearize (copy-tree db))))
