@@ -784,13 +784,13 @@
                                (t
                                 nil))))))))
 
-      (format t "db =~%~{~A~%~}" db)
+      ;;(format t "db =~%~{~A~%~}" db)
 
       ;; 3a. Assemble the edge table.
       ;; Here we construct a "LEFT is to the left of RIGHT" table
       (let ((rev-cols (map 'vector (lambda (x) (reverse (second x))) db))
             (edge-table (u:dict #'eq)))
-        (:printv rev-cols)
+        ;;(:printv rev-cols)
         (u:while (notevery #'null rev-cols)
           (loop :for idx :below (length rev-cols)
                 :when (aref rev-cols idx)
@@ -841,18 +841,149 @@
 
             (mark nil)
 
-            (stats shash edge-table col-assignment)
+            #++(stats shash edge-table col-assignment)
+
+            (sort (u:hash->alist col-assignment) #'< :key #'cdr)
+
             ))))))
 
-(defun gen-random-db (min-sort-classes max-sort-classes min-cols max-cols)
-  ;; TODO: make a random consistent sorting hierarchy and return it.
-  nil)
+;; TODO: add this
+(defun make-partition (m n)
+  (let ((p (make-array m :initial-element nil)))
+    (loop :for i :below n
+          :do (push i (aref p (random m))))
+    ;; TODO: Fix later.
+    (coerce p 'list)))
 
-(defun doit ()
-  (let ((db '((sbase (p i))
-              (foo (z p i))
-              (qux (d e z f p i))
-              (feh (r s t l p i))
-              (meh (r s t h z l p i))
-              (bar (a z b c p i)))))
-    (linearize (copy-tree db))))
+(defun gen-name (table)
+  (let ((name (string-upcase
+               (u:random-elt net.mfiano.lisp.algae.rng::+dictionary+))))
+    (if (u:href table name)
+        (gen-name table)
+        (let ((sym (make-symbol name)))
+          (setf (u:href table name) t)
+          sym))))
+
+
+
+(defun select-columns (edges partition node-count bit-positions)
+  (let ((node-bits (coerce (loop :repeat node-count
+                                 :collect (make-array (length bit-positions)
+                                                      :element-type 'bit
+                                                      :initial-element 0))
+                           'vector))
+        (parents (make-array node-count :initial-element nil)))
+    (loop for i below node-count
+          for bits = (pop partition)
+          for children = (gethash i edges)
+          do (loop for b in bits do (setf (aref (aref node-bits i) b) 1))
+             (loop for c in children
+                   do (setf (aref node-bits c)
+                            (bit-ior (aref node-bits i)
+                                     (aref node-bits c)))
+                      (push i (aref parents c))))
+
+    (map 'list (lambda (x y)
+                 (list y (bitvector->bit-ordering x bit-positions)))
+         node-bits parents)))
+
+(defun bitvector->bit-ordering (bitvector list)
+  (loop :with v = (coerce list 'vector)
+        :for b :across bitvector
+        :for i :from 0
+        :when (plusp b)
+          :collect (aref v i)))
+
+
+(defun gen-db (node-count column-count)
+  (let* ((words (u:dict #'equal))
+         (bit-positions (u:iota column-count))
+         (bit-partition (make-partition node-count column-count))
+         (class-names (coerce (loop :repeat node-count
+                                    :collect (gen-name words))
+                              'vector))
+         (column-names (coerce (loop :repeat column-count
+                                     :collect (gen-name words))
+                               'vector)))
+
+    (labels ((gen-dag (node-num)
+               (let ((edges (u:dict #'eql)))
+                 (loop :for source :from 1 :below node-num
+                       :do (loop :repeat (1+ (random 10))
+                                 :for target = (random source)
+                                 :do (pushnew source (u:href edges target))))
+                 edges)))
+
+      ;; Returns bit vector indexed at integer node
+      (let ((columns-per-node (select-columns (gen-dag node-count)
+                                              bit-partition
+                                              node-count
+                                              bit-positions)))
+        (loop :for (parents cols) :in columns-per-node
+              :for i :from 0
+              :collect (list (aref class-names i)
+                             (loop :for p :in parents
+                                   :collect (aref class-names p))
+                             (loop :for c :in cols
+                                   :collect (aref column-names c))))))))
+
+(defun doit3 (&optional (node-count 3) (column-count 3))
+  (let* (#++(db-old '((sbase (p i))
+                      (foo (z p i))
+                      (qux (d e z f p i))
+                      (feh (r s t l p i))
+                      (meh (r s t h z l p i))
+                      (bar (a z b c p i))))
+         (raw-db (mapcar (lambda (x)
+                           (list (first x) (second x)
+                                 (append (third x) '(p i))))
+                         (gen-db node-count column-count)))
+         (db (mapcar (lambda (x)
+                       (list (first x) (third x)))
+                     raw-db)))
+    #++(linearize db)
+    (format t "*** db:~%~{~A~%~}--> linearization:~%~{~A~%~}"
+            raw-db (nreverse (linearize (copy-tree db))))))
+
+(defun doit4 ()
+  (loop :for i :below (* 100 1024)
+        :do (when (zerop (mod i 1024))
+              (format t ".")
+              (finish-output))
+            (doit3 (+ 5 (random 5)) (+ 10 (random 10))))
+  (format t "~%"))
+
+;; External validation
+
+;; NOTE: Once an ordering between two columns has been defined, that order must
+;; be true for ALL sorting classes everywhere that use those two columns.
+;; If any derived sorting class has a conflicting order for two sorting
+;; columns, it is an error.
+
+;; 1. All columns in each sorting-class must exist in the final ordering.
+;; 2. The order of each sorting-class column must be preserved in the
+;;    linearization.
+;; 3. No extra columns, no missing columns.
+;; 4. No duplicated colum names or indecies
+;; 5. No holes in the integer indexing from 0 to max column number.
+;; 6. Ensure that if given wrong input it fails gracefully.
+;;    For example, pass in a db that violates the NOTE above and ensure
+;;    we detect it and do something graceful.
+;; 7. Include hardcoded specific and interesting test cases like diamond dags
+;;    or complex ones we think are interesting.
+;; 8. Include first real uses of this system (in V) as actual test cases.
+;; 9. All pairs of columns must preserve their order in all classes that used
+;;    those columns.
+
+
+#|
+(define-sorting-classes name ()
+(sbase () ((p #'component-type<) (i #'<)))
+(integer-order (sbase) ((v #'<) p i)))
+
+(define-sorting-classes name ()
+(foo (sbase) (a b c))
+(bar (sbase) (d e f))
+(xxx (foo bar) (a d b e c f))
+(yyy (foo bar
+|#
