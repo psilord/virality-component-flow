@@ -938,10 +938,13 @@
                            (list (first x) (second x)
                                  (append (third x) '(p i))))
                          (gen-db node-count column-count)))
+         (all-columns (remove-duplicates
+                       (u:flatten (mapcar #'third raw-db))))
          (db (mapcar (lambda (x)
                        (list (first x) (third x)))
                      raw-db)))
     #++(linearize db)
+    (format t "There are ~a named columns.~%" (length all-columns))
     (format t "*** db:~%~{~A~%~}--> linearization:~%~{~A~%~}"
             raw-db (nreverse (linearize (copy-tree db))))))
 
