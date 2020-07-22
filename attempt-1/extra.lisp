@@ -1086,7 +1086,7 @@
 ;; [ ] rule-db/column-definitions-and-references-well-formed
 ;;     <acts upon a the full raw-db of sorting-class forms>
 ;;     When a column is first defined in a sorting class hierarchy, it REQUIRES
-;;     a comparator function to be paired with it.
+;;     a comparator function to be paired with it. It can only be defined once.
 ;;
 ;;     When a column previously defined in the sorting hierarchy is referenced,
 ;;     it MUST NOT supply a comparator function.
