@@ -761,7 +761,8 @@
     ))
 
 (defun linearize (db)
-  (let ((total-columns 0)
+  (let ((db (copy-tree db))
+        (total-columns 0)
         (shash (u:dict #'eq)))
     ;; 1. Compute total number of columns & column frequency(?)
     (loop :for (sc cols) :in db
@@ -843,7 +844,8 @@
 
             #++(stats shash edge-table col-assignment)
 
-            (sort (u:hash->alist col-assignment) #'< :key #'cdr)
+            ;; We treat column zero as being on the RIGHT side of the table.
+            (sort (u:hash->alist col-assignment) #'> :key #'cdr)
 
             ))))))
 
@@ -927,29 +929,126 @@
                              (loop :for c :in cols
                                    :collect (aref column-names c))))))))
 
-(defun doit3 (&optional (node-count 3) (column-count 3))
-  (let* (#++(db-old '((sbase (p i))
-                      (foo (z p i))
-                      (qux (d e z f p i))
-                      (feh (r s t l p i))
-                      (meh (r s t h z l p i))
-                      (bar (a z b c p i))))
-         (raw-db (mapcar (lambda (x)
+(defun doit3 (&optional (node-count 3) (column-count 3) (verbose nil))
+  (let* ((raw-db (mapcar (lambda (x)
                            (list (first x) (second x)
                                  (append (third x) '(p i))))
                          (gen-db node-count column-count)))
+         #++(raw-db '((sbase () (p i))
+                      (foo (sbase) (z p i))
+                      (qux (foo) (d e z f p i))
+                      (feh (sbase) (r s k l p i))
+                      (meh (feh foo) (r s k h z l p i))
+                      (bar (foo) (a z b c p i))))
          (all-columns (remove-duplicates
                        (u:flatten (mapcar #'third raw-db))))
          (db (mapcar (lambda (x)
                        (list (first x) (third x)))
-                     raw-db)))
-    #++(linearize db)
-    (format t "There are ~a named columns.~%" (length all-columns))
-    (format t "*** db:~%~{~A~%~}--> linearization:~%~{~A~%~}"
-            raw-db (nreverse (linearize (copy-tree db))))))
+                     raw-db))
+         )
 
-(defun doit4 ()
-  (loop :for i :below (* 100 1024)
+    (and (rule-db/sorting-class-syntactically-well-formed raw-db)
+
+         )
+
+    (let ((linearization (linearize db)))
+
+      (when verbose
+        (format t "There are ~a named columns.~%" (length all-columns))
+        (format t "*** db:~%~{~A~%~}--> linearization:~%~{~A~%~}"
+                raw-db linearization))
+
+      ;; Typecheck
+      (unless (or (rule-lin/no-duplicated-columns linearization)
+                  (rule-lin/no-duplicated-indices linearization)
+                  (rule-lin/only-valid-columns-exist linearization all-columns)
+                  (rule-lin/sorting-class-column-order-preserved linearization
+                                                                 raw-db)
+                  (rule-lin/no-index-holes-start-from-zero linearization))
+
+        (error "Linearization typecheck failed."))
+
+      linearization)))
+
+;;;; Raw-db type rules.
+(defun rule-db/sorting-class-syntactically-well-formed (raw-db)
+  (unless (listp raw-db)
+    (error "raw-db is not a list"))
+
+  (labels ((invalid-symbol (item)
+             ;; a symbol that cannot be a certain subset of symbols.
+             (and (symbolp item)
+                  (or (keywordp item)
+                      (eq item nil)
+                      (eq item t))))
+
+           (process-sorting-class (spec)
+             (unless (listp spec)
+               (error "spec is not a list"))
+
+             (destructuring-bind (&optional sc parents cols) spec
+               (when (invalid-symbol sc)
+                 (error "spec name is not a valid symbol"))
+               (unless (listp parents)
+                 (error "spec parents is not a cons"))
+               (unless (consp cols)
+                 (error "spec columns is not a cons"))
+
+               (dolist (parent parents)
+                 (when (not (symbolp parent))
+                   (error "spec parent is not a symbol"))
+                 (when (invalid-symbol parent)
+                   (error "spec parent is not a valid symbol")))
+
+               (dolist (col cols)
+                 (cond
+                   ((symbolp col)
+                    (when (invalid-symbol col)
+                      (error "spec col is not a proper symbol.")))
+                   ((consp col)
+                    (destructuring-bind (&optional col-name . comparator) col
+                      (when (invalid-symbol col-name)
+                        (error "spec col name in compound form is wrong."))
+                      (cond
+                        ((= (length comparator) 1)
+                         (when (invalid-symbol (first comparator))
+                           (error "spec col comparator is invalid."))
+                         t)
+                        (t
+                         (error "spec col compound form is invalid."))))))))))
+
+    (dolist (spec raw-db)
+      (process-sorting-class spec))))
+
+;;;; linearization type rules.
+(defun rule-lin/no-duplicated-columns (linearization)
+  (= (length linearization)
+     (length (remove-duplicates linearization :key #'car))))
+
+(defun rule-lin/no-duplicated-indices (linearization)
+  (= (length linearization)
+     (length (remove-duplicates linearization :key #'cdr))))
+
+(defun rule-lin/only-valid-columns-exist (linearization all-columns)
+  (and (null (set-difference (mapcar #'first linearization) all-columns))
+       (= (length linearization) (length all-columns))))
+
+(defun rule-lin/sorting-class-column-order-preserved (linearization raw-db)
+  (let ((x (loop :for (name parents columns) :in raw-db
+                 :collect (mapcar (lambda (col)
+                                    (cdr (assoc col linearization)))
+                                  columns))))
+    (every (lambda (col-indices)
+             (apply #'> col-indices))
+           x)))
+
+(defun rule-lin/no-index-holes-start-from-zero (linearization)
+  (equal (mapcar #'cdr (sort (copy-seq linearization) #'< :key #'cdr))
+         (u:iota (length linearization))))
+
+
+(defun doit4 (&optional (n 128))
+  (loop :for i :below n
         :do (when (zerop (mod i 1024))
               (format t ".")
               (finish-output))
@@ -963,30 +1062,99 @@
 ;; If any derived sorting class has a conflicting order for two sorting
 ;; columns, it is an error.
 
-;; 1. All columns in each sorting-class must exist in the final ordering.
-;; 2. The order of each sorting-class column must be preserved in the
-;;    linearization.
-;; 3. No extra columns, no missing columns.
-;; 4. No duplicated colum names or indecies
-;; 5. No holes in the integer indexing from 0 to max column number.
-;; 6. Ensure that if given wrong input it fails gracefully.
-;;    For example, pass in a db that violates the NOTE above and ensure
-;;    we detect it and do something graceful.
-;; 7. Include hardcoded specific and interesting test cases like diamond dags
-;;    or complex ones we think are interesting.
-;; 8. Include first real uses of this system (in V) as actual test cases.
-;; 9. All pairs of columns must preserve their order in all classes that used
-;;    those columns.
+;;;; raw-db validation pass:
+
+;; [x] rule-db/sorting-class-syntactically-well-formed
+;;     <acts upon a single sorting-class form>
+;; Each sorting class must have a
+;;  name: a single symbol
+;;  parents: a list of symbols, null is ok, but not as a parent member.
+;;  columns: a list of items which are a single symbol or (symbol symbol)
+;;  NOTE: the (sym1 sym2) form means sym2 is a runtime looked up function
+;;        symbol. This means we disallow (f #'f) since it turns into
+;;        (f (function f)). We also believe that a fixed function specified
+;;        with FUNCTION leads to a case where if the user redefines that
+;;        function at runtime, it will NOT update the sorting class, and will
+;;        lead to confusion. We (the devs) can optimize looking up the function
+;;        ourselves at the end of a frame if we need to speed it up, etc.
+
+;; [ ] rule-db/no-forward-parent-declarations
+;;     <acts upon a the full raw-db of sorting-class forms>
+;;     A raw-db sorting-class cannot use a parent sorting-class which
+;;     hasn't been seen before.
+
+;; [ ] rule-db/column-definitions-and-references-well-formed
+;;     <acts upon a the full raw-db of sorting-class forms>
+;;     When a column is first defined in a sorting class hierarchy, it REQUIRES
+;;     a comparator function to be paired with it.
+;;
+;;     When a column previously defined in the sorting hierarchy is referenced,
+;;     it MUST NOT supply a comparator function.
+
+;; [ ] rule-db/canonicalize-for-linearization
+;;     Canonicalize the raw-db to remove the column sorting function names.
+;;     It strictly means removing the function comparators and making the
+;;     columns a pure symbol name.
+
+;; [ ] rule-db/valid-column-inheritance
+;;     Ensure that all columns in a particular raw-db came from either itself,
+;;     or some parent in the hierarchy.
+
+;; [ ] rule-db/no-duplicate-parents
+;;     Each of the sorting class parents must be unique in the parent list.
+;;     No NIL/T, or keywords, in the parents list.
+
+;; [ ] rule-db/sorting-class-unique
+;;     Each sorting class name in a raw-db must be a unique name.
+;;     Duplicate column names that are in different packages are allowed.
+
+;; [ ] rule-db/all-column-pairs-preserve-order
+;;     All pairs of columns for each sorting-class must preserve their
+;;     order in all classes that used those columns.
+
+;; And then, if all the above passes, we can pass it to LINEARIZE.
+
+;;;; linearization validation pass:
+
+;; [x] rule-lin/no-duplicated-columns
+;;     No duplicated column names in linearization.
+
+;; [x] rule-lin/no-duplicated-indices
+;;     No duplicated column indices in linearization.
+
+;; [x] rule-lin/only-valid-columns-exist
+;;     All columns in each sorting-class must exist in the final ordering.
+;;     No extra columns, no missing columns.
+
+;; [x] rule-lin/sorting-class-column-order-preserved
+;;     The order of each sorting-class column must be preserved in the
+;;     linearization.
+
+;; [x] rule-lin/no-index-holes-start-from-zero
+;;     No holes in the integer indexing starting from 0 to max column number.
+
+
+;;;; Guidelines & Other stuff to do
+
+;; Include hardcoded specific and interesting test cases like diamond dags
+;; or complex ones we think are interesting.
+
+;; Include first real uses of this system (in V) as actual test cases.
+
+;; Add a unit test for each code path for these type checks. Use Prove.
+
+
+
+
 
 
 #|
-(define-sorting-classes name ()
-(sbase () ((p #'component-type<) (i #'<)))
-(integer-order (sbase) ((v #'<) p i)))
 
 (define-sorting-classes name ()
-(foo (sbase) (a b c))
-(bar (sbase) (d e f))
-(xxx (foo bar) (a d b e c f))
-(yyy (foo bar
+(sbase () ((p component-type<) (i '<))) -> (sbase () (p i))
+(integer-order (sbase) ((v '<) p i)))   -> (integer-order (sbase) (v p i))
+
+(define-sorting-classes name ()
+(foo (integer-order) ((x '>) v p i)))
+
 |#
