@@ -1086,10 +1086,11 @@
 ;; [ ] rule-db/column-definitions-and-references-well-formed
 ;;     <acts upon a the full raw-db of sorting-class forms>
 ;;     When a column is first defined in a sorting class hierarchy, it REQUIRES
-;;     a comparator function to be paired with it. It can only be defined once.
+;;     a comparator function and default to be paired with it. It can only be
+;;     defined once.
 ;;
 ;;     When a column previously defined in the sorting hierarchy is referenced,
-;;     it MUST NOT supply a comparator function.
+;;     it MUST NOT supply a comparator function or default.
 
 ;; [ ] rule-db/canonicalize-for-linearization
 ;;     Canonicalize the raw-db to remove the column sorting function names.
@@ -1133,6 +1134,12 @@
 ;; [x] rule-lin/no-index-holes-start-from-zero
 ;;     No holes in the integer indexing starting from 0 to max column number.
 
+;; NOTE: The sorting function is a symbol. At engine start we get the function
+;; object and store it into (somewhere) so we don't have to do a lookup.
+;; At the end of each frame, for all sorting functions we know about we
+;; recompute their fdefinition and store it again. This means that if the user
+;; stops the frame in the middle and redefines the sorting function, the engine
+;; only makes it take effect at the end of the frame (or some defined spot).
 
 ;;;; Guidelines & Other stuff to do
 
@@ -1158,3 +1165,189 @@
 (foo (integer-order) ((x '>) v p i)))
 
 |#
+
+;; Document to the user that we highly recommend they put sort/ infront of
+;; the sorting class name they use, except for v:sort/sbase which is package
+;; qualified. We need to warn the user when they don't put sort/ infront of
+;; the sorting class because it is a convention when using this feature.
+
+
+;; in core V code
+(defclass sort/base ()
+  ;; SBCL will warn if a slot with the same name but a different package
+  ;; exists. So, we name ours a little funny to reduce the chance it will
+  ;; conflict with a gamedev slotname.
+  ((%100v-sorting-type :reader sorting-type
+                       ;; What key do we put here? sort class name?
+                       :initform 'sort/base)
+   ;; hash table of column names to values.
+   (%100v-column-values :reader column-values
+                        ;; Key is column name, Value is column value.
+                        :initform (u:dict #'eq))))
+
+(defun column-value (instance column-name)
+  (multiple-value-bind (value present-p)
+      (u:href (column-values instance) column-name)
+    (if present-p
+        value
+        (setf (column-value instance column-name)
+              '<code-to-get-column-default-from-core>))))
+
+(defun (setf column-value) (new-val instance column-name)
+  ;; TODO: More complicated to rip object out of containing tree and reinsert
+  ;; it. Must be derfered to "end of frameish" time so it happens after all the
+  ;; mutation phases have completed.
+  (setf (u:href (column-values instance) column-name)
+        new-val))
+
+
+
+
+;; in core V for default components
+#++(define-sorting-classes virality-core ()
+  (sort/render-layer (v:sort/base) ((render-layer render-sort-hook))))
+
+;; When assigning comaprator functions, if 'sym-< is not defined, then set it
+;; to #'< and assume integers. Otherwse, use fdefinition of the sym-< symbol.
+
+#++(v:define-component render (sort/render-layer) ())
+
+
+
+;; user code
+#++(define-sorting-classes ? ()
+  ;; -> p i are implicit and on the right for each definition
+  (sort/foo (v:sort/base) ((z :sorter < :default 0)
+                           (pp :sorter < :default 0)))
+  (sort/qux (sort/foo) ((d :sorter < :default 0)
+                        (e :sorter blah :default nil)
+                        z
+                        (f :sorter > :default 0)
+                        pp))
+  (sort/feh (v:sort/base) ((r :sorter < :default 0)
+                           (s :sorter > :default 0)
+                           (k :sorter < :default 0)
+                           (l :sorter < :default 0)))
+  (sort/meh (sort/feh sort/foo) (r
+                                 s
+                                 k
+                                 (h :sorter < :default 0)
+                                 z
+                                 l))
+  (sort/bar (sort/foo) ((a :sorter < :default 0)
+                        z
+                        (b :sorter < :default 0)
+                        (c :sorter > :default 0)))
+  (sort/my-render-layer (v:sort/render-layer) ((zzz :sorter < :default 0))))
+
+;; make a macro to expand the above form into expansion
+#++(defclass sort/foo (v:sort/base) ())
+#++(defmethod initialize-instance :after ((instance sort/foo)
+                                       &rest initargs
+                                         ;; key options unused.
+                                       &key (z nil z-supplied-p))
+  (when z-supplied-p
+    (setf (column-values instance 'z) z)))
+
+#++(defclass sort/qux (sort/foo) ())
+#++(defmethod initialize-instance :after ((instance sort/qux)
+                                       &rest initargs
+                                         ;; key options unused.
+                                       &key
+                                         (d nil d-supplied-p)
+                                         (e nil e-supplied-p)
+                                         (f nil f-supplied-p))
+  (when d-supplied-p
+    (setf (column-values instance 'd) d))
+  (when e-supplied-p
+    (setf (column-values instance 'e) e))
+  (when f-supplied-p
+    (setf (column-values instance 'f) f)))
+
+;; do initialize-instance for each one.
+
+#++(defclass sort/feh (v:sort/base) ())
+#++(defclass sort/meh (sort/feh sort/foo) ())
+#++(defclass sort/bar (sort/foo) ())
+
+;; user project code
+#++(v:define-sorting-classes project ()
+  (sort/something-else-system (v:sort/base ((s :sorter < :default 0)))))
+
+#++(v:define-component foobar (sort/something-else-system)
+  ())
+
+;; Toplevel interface to alter core V functionality of sorting class info
+;; THis is probably a macro to insert this information into the meta table
+;; for the sorting classes. This column MUST have been previously seen before
+;; this macro can be used otherwise it is an error.
+;; In the case of user code, all of V would have been laoded before the user
+;; code gets loaded, so usually not a problem. In the case of contribs, the
+;; contribs can only see the previously loaded contribs that came before it.
+;; The user code should be loaded after all contribs to make final decisions.
+#++(v:define-column-sorter v:render-layer blah ;; a function name
+  :default :foo
+  :converter converter) ;; a function name
+
+;; Runtime API into V (or any previous sorting class definition)
+;; to change sorting column comparator. This goes into the recompilation queue
+;; so at the end of the frame, the objects are all ripped out of the sorting
+;; tree the column function updated, then reinserted back into the tree.
+;; This is a function.
+#++(v:override-column-sorter 'v:render-layer 'blah ;; a function name
+                          :default :foo
+                          :converter 'converter) ;; a function name
+
+
+
+
+
+(u:define-constant +blah+ (u:dict :foo 0
+				  :bar 1
+				  :thing 2
+				  :qux 3)
+  :test #'equalp)
+
+(defun blah (left-col-val right-col-val)
+  (< (u:href +blah+ left-col-val)
+     (u:href +blah+ right-col-val)))
+
+;; store this somewhere: column-comparators
+;; z -> [< 0]
+;; d -> [< 0]
+;; e -> [blah 0]
+;; f -> [> 0]
+;; ... and so on.
+
+
+;; lookup table for comparison is n^2, key is (left right), value is func
+;; how the keys are represented can be optimized for speed.
+;;   left  a b c d e f g
+;; right a A B C D E F G
+;;       b H I J K L M N
+;;       c .....
+;;       d
+;;       e
+;;       f
+;;       g
+
+;; these comparator/* are generated after inspection of the column table.
+;; A -> (comparator/a-a a a)
+;; B -> (comparator/a-b a b)
+;; C -> (comparator/a-c a c)
+;; D -> and so forth.
+
+
+
+
+;; orthogonal feature to above discussion:
+;; make a V API function that allows replacement of a component with another
+;; one, possibly converting initargs too (especially if the replacement is
+;; not a subclass). For example
+;; (component-substitute 'comp:render 'my-render #'initarg-converter)
+;; could be called in the prologue function, so every time a prefab is
+;; created, any comp:render compoennt is replaced by my-render and the
+;; arg list is converted to a new one via the converter.
+;; This provides a means to rapidly prototype exploratory component
+;; replacement (real example: comp:render -> 'sketch in PtP to test
+;; standalone draw ordering with new components.)
