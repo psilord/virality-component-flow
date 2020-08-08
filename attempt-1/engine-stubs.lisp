@@ -6,7 +6,9 @@
 
 ;; Globals (for DSL storage).
 ;; Copy into V's metadata.lisp file.
-(global-vars:define-global-var =meta/sorting-classes= (u:dict #'eq))
+(global-vars:define-global-var =meta/sorting-classes=
+    (u:dict #'eq
+	    'known-sorting-classes (u:dict #'eq 'sort/base t)))
 
 ;; Don't copy into V.
 (defmacro define-component (name (&rest parents) &body body)

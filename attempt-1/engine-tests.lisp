@@ -3,6 +3,27 @@
 ;; engine-tests
 
 
+(defmacro assert-validity-rules (raw-db &body rules)
+  "Assert a sequence of predicates. Do not short circuit. If it fails,
+then print out the result of which form failed."
+  (u:with-gensyms (evals failedp)
+    `(let ((,failedp t))
+       (unwind-protect
+            (let ((,evals (list
+                           ,@(loop :for rule :in rules
+                                   :collect `(list ',rule ,rule)))))
+              (setf ,failedp (some #'null (mapcar #'second ,evals)))
+
+              (when ,failedp
+                  (format t "Failed!~%~{ ~A~%~}" ,evals))
+
+              (not ,failedp))
+         (when ,failedp
+           (format t "Errored!~% raw-db: ~A~%" ,raw-db))))))
+
+
+
+
 (defun doit2 ()
   (let* ((dll (dll:make-list))
          ;; Keep track of these nodes for now.
@@ -68,9 +89,10 @@
                      raw-db))
          )
 
-    (and (rule-db/sorting-class-syntactically-well-formed raw-db)
-
-         )
+    (unless (assert-validity-rules raw-db
+	      (rule-db/sorting-class-syntactically-well-formed raw-db)
+	      (rule-db/validate-parent-count raw-db))
+      (return-from doit3 nil))
 
     (let ((linearization (linearize db)))
 
@@ -93,8 +115,24 @@
 
 (defun doit4 (&optional (n 128))
   (loop :for i :below n
-        :do (when (zerop (mod i 1024))
-              (format t ".")
-              (finish-output))
-            (doit3 (+ 5 (random 5)) (+ 10 (random 10))))
-  (format t "~%"))
+	:do (when (zerop (mod i 1024))
+	      (format t ".")
+	      (finish-output))
+	:always (doit3 (+ 5 (random 5)) (+ 10 (random 10)))
+	:finally (terpri)))
+
+
+
+(defun doit5 ()
+  (let* ((raw-db '((sort/base () (p i))
+                   (foo (sort/base) (z p i))
+                   (qux (foo) (d e z f p i))
+                   (feh (sort/base) (r s k l p i))
+                   (meh (feh foo) (r s k h z l p i))
+                   (bar (foo) (a z b c p i)))))
+
+    (assert-validity-rules raw-db
+      (rule-db/sorting-class-syntactically-well-formed raw-db)
+      (rule-db/validate-parent-count raw-db)
+      (rule-db/sort-class-may-not-be-its-own-parent raw-db)
+      #++(rule-db/no-forward-parent-declarations raw-db))))
