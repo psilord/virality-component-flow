@@ -9,8 +9,20 @@
   :depends-on (#:alexandria
 	       #:queues
 	       #:printv
+               #:global-vars
 	       #:net.mfiano.lisp.golden-utils
 	       #:net.mfiano.lisp.algae)
-  :components ((:file "package")
-               (:file "attempt-1")
-	       (:file "extra")))
+  :components (;; "V" engine code
+	       (:file "package") ;; Globals
+	       (:file "sort-class") ;; Sorting Class implementation
+               (:file "attempt-1") ;; Quack implementation
+
+	       ;; Test code for "engine"
+	       (:file "engine-tests")
+
+	       ;; The "user project" code that uses the "engine"
+	       (:file "proj")
+
+	       ;; Test code for "project" code
+	       (:file "proj-tests")
+	       ))
