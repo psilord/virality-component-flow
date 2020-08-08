@@ -304,11 +304,6 @@
   (declare (ignore sortclass new-func body))
   nil)
 
-
-(defmacro define-component (name (&rest parents) &body body)
-  (declare (ignore name parents body))
-  nil)
-
 (defun override-column-sorter (column-name new-func &rest args)
   (declare (ignore column-name new-func args))
   nil)

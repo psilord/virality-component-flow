@@ -14,6 +14,8 @@
 	       #:net.mfiano.lisp.algae)
   :components (;; "V" engine code
 	       (:file "package") ;; Globals
+	       (:file "engine-stubs") ;; Low level V simulation stubs.
+
 	       (:file "sort-class") ;; Sorting Class implementation
                (:file "attempt-1") ;; Quack implementation
 

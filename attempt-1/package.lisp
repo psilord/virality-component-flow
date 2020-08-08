@@ -24,10 +24,3 @@
   (:local-nicknames
    (#:u #:net.mfiano.lisp.golden-utils)
    (#:v #:attempt-1)))
-
-
-;; Globals
-(in-package #:attempt-1)
-
-;; like defvar
-(global-vars:define-global-var =meta/sorting-classes= (u:dict #'eq))
