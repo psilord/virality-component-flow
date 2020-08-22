@@ -38,6 +38,7 @@
 
 ;; How sorting classes are implemented and works.
 
+;; private human readable does linearize work validty output.
 (defun stats (shash edge-table col-assignment)
   (let ((total-columns (hash-table-count shash)))
     (format t "number of columns: ~A~%" total-columns)
@@ -141,89 +142,6 @@
 
             ))))))
 
-;; TODO: add this
-(defun make-partition (m n)
-  (let ((p (make-array m :initial-element nil)))
-    (loop :for i :below n
-          :do (push i (aref p (random m))))
-    ;; TODO: Fix later.
-    (coerce p 'list)))
-
-(defun gen-name (table)
-  (let ((name (string-upcase
-               (u:random-elt net.mfiano.lisp.algae.rng::+dictionary+))))
-    (if (u:href table name)
-        (gen-name table)
-        (let ((sym (make-symbol name)))
-          (setf (u:href table name) t)
-          sym))))
-
-
-
-(defun select-columns (edges partition node-count bit-positions)
-  (let ((node-bits (coerce (loop :repeat node-count
-                                 :collect (make-array (length bit-positions)
-                                                      :element-type 'bit
-                                                      :initial-element 0))
-                           'vector))
-        (parents (make-array node-count :initial-element nil)))
-    (loop for i below node-count
-          for bits = (pop partition)
-          for children = (gethash i edges)
-          do (loop for b in bits do (setf (aref (aref node-bits i) b) 1))
-             (loop for c in children
-                   do (setf (aref node-bits c)
-                            (bit-ior (aref node-bits i)
-                                     (aref node-bits c)))
-                      (push i (aref parents c))))
-
-    (map 'list (lambda (x y)
-                 (list y (bitvector->bit-ordering x bit-positions)))
-         node-bits parents)))
-
-(defun bitvector->bit-ordering (bitvector list)
-  (loop :with v = (coerce list 'vector)
-        :for b :across bitvector
-        :for i :from 0
-        :when (plusp b)
-          :collect (aref v i)))
-
-
-(defun gen-db (node-count column-count)
-  (let* ((words (u:dict #'equal))
-         (bit-positions (u:iota column-count))
-         (bit-partition (make-partition node-count column-count))
-         (class-names (coerce (loop :repeat node-count
-                                    :collect (gen-name words))
-                              'vector))
-         (column-names (coerce (loop :repeat column-count
-                                     :collect (gen-name words))
-                               'vector)))
-
-    ;; we always want sort/base to be first and with nil parents.
-    ;; This makes our real use case easier to test.
-    (setf (aref class-names 0) 'sort/base)
-
-    (labels ((gen-dag (node-num)
-               (let ((edges (u:dict #'eql)))
-                 (loop :for source :from 1 :below node-num
-                       :do (loop :repeat (1+ (random 10))
-                                 :for target = (random source)
-                                 :do (pushnew source (u:href edges target))))
-                 edges)))
-
-      ;; Returns bit vector indexed at integer node
-      (let ((columns-per-node (select-columns (gen-dag node-count)
-                                              bit-partition
-                                              node-count
-                                              bit-positions)))
-        (loop :for (parents cols) :in columns-per-node
-              :for i :from 0
-              :collect (list (aref class-names i)
-                             (loop :for p :in parents
-                                   :collect (aref class-names p))
-                             (loop :for c :in cols
-                                   :collect (aref column-names c))))))))
 
 ;; External validation
 
@@ -346,20 +264,20 @@
 
 (defun process-rule (func raw-db)
   (loop :for (sc-name parents . colnames) :in raw-db
-	:do (funcall func sc-name parents colnames)))
+        :do (funcall func sc-name parents colnames)))
 
 (defun rule-db/validate-parent-count (raw-db)
   (process-rule
    (lambda (sc-name parents colnames)
      (declare (ignore colnames))
      (if (eq sc-name 'sort/base)
-	 (when parents
-	   (error "Sorting class SORT/BASE may not have parents: ~A"
-		  parents))
-	 (unless parents
-	   (error "Sorting class ~A: parents cannot be NIL." sc-name))))
+         (when parents
+           (error "Sorting class SORT/BASE may not have parents: ~A"
+                  parents))
+         (unless parents
+           (error "Sorting class ~A: parents cannot be NIL." sc-name))))
    raw-db)
-   t)
+  t)
 
 (defun rule-db/sort-class-may-not-be-its-own-parent (raw-db)
   (process-rule
@@ -367,7 +285,7 @@
      (declare (ignore colnames))
      (when (member sc-name parents)
        (error "The sorting class ~A cannot be its own parent in the parent list: ~A"
-	      sc-name parents)))
+              sc-name parents)))
    raw-db)
   t)
 

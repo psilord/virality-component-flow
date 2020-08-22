@@ -7,24 +7,19 @@
   :version "0.0.1"
   :serial t
   :depends-on (#:alexandria
-	       #:queues
-	       #:printv
+               #:queues
+               #:printv
                #:global-vars
-	       #:net.mfiano.lisp.golden-utils
-	       #:net.mfiano.lisp.algae)
+               #:net.mfiano.lisp.golden-utils
+               #:net.mfiano.lisp.algae)
+  :in-order-to ((asdf:test-op (asdf:test-op #:attempt-1.test)))
   :components (;; "V" engine code
-	       (:file "package") ;; Globals
-	       (:file "engine-stubs") ;; Low level V simulation stubs.
+               (:file "package") ;; Globals
+               (:file "engine-stubs") ;; Low level V simulation stubs.
 
-	       (:file "sort-class") ;; Sorting Class implementation
+               (:file "sort-class") ;; Sorting Class implementation
                (:file "attempt-1") ;; Quack implementation
 
-	       ;; Test code for "engine"
-	       (:file "engine-tests")
-
-	       ;; The "user project" code that uses the "engine"
-	       (:file "proj")
-
-	       ;; Test code for "project" code
-	       (:file "proj-tests")
-	       ))
+               ;; The "user project" code that uses the "engine"
+               (:file "proj")
+               ))
