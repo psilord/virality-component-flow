@@ -2,7 +2,8 @@
 
 ;; :test-file skeleton.
 
-(setf *default-reporter* :tap) ;; Fix my theme so :list works.
+(setf *default-reporter* :list) ;; Fix my theme so :list works.
+(setf *enable-colors* nil)
 
 (plan nil) ;; number of subtests to plan or NIL if not sure yet.
 
