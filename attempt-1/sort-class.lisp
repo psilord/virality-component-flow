@@ -36,18 +36,19 @@
         new-val))
 
 
-
-
-
 (defun lexicographic/package-then-symbol-< (left right)
   (let* ((left-package-name (package-name (symbol-package left)))
          (right-package-name (package-name (symbol-package right)))
          (left-name (symbol-name left))
          (right-name (symbol-name right)))
 
-    (if (string= left-package-name right-package-name)
-        (string< left-name right-name)
-        (string< left-package-name right-package-name))))
+    (let ((result
+	    (if (string= left-package-name right-package-name)
+		(string< left-name right-name)
+		(string< left-package-name right-package-name))))
+      ;; Crunch it to boolean instead of geneeralized boolean.
+      ;; Make prove tests more understandable.
+      (if result t nil))))
 
 (defun lexicographic/symbol-then-package-< (left right)
   (let ((left-package-name (package-name (symbol-package left)))
@@ -55,9 +56,13 @@
         (left-name (symbol-name left))
         (right-name (symbol-name right)))
 
-    (if (string= left-name right-name)
-        (string< left-package-name right-package-name)
-        (string< left-name right-name))))
+    (let ((result
+	    (if (string= left-name right-name)
+		(string< left-package-name right-package-name)
+		(string< left-name right-name))))
+      ;; Crunch it to boolean instead of geneeralized boolean.
+      ;; Make prove tests more understandable.
+      (if result t nil))))
 
 ;; How sorting classes are implemented and works.
 

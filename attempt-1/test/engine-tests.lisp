@@ -29,7 +29,7 @@ then print out the result of which form failed."
 
 
 
-(defun doit2 ()
+(defun quack-proof-of-concept ()
   (let* ((dll (dll:make-list))
          ;; Keep track of these nodes for now.
          (cur-0 nil)
@@ -102,7 +102,7 @@ then print out the result of which form failed."
                (u:random-elt net.mfiano.lisp.algae.rng::+dictionary+))))
     (if (u:href table name)
         (gen-name table)
-	;; The names must be in a home package.
+        ;; The names must be in a home package.
         (let ((sym (intern (string-upcase name) :test-sorting-class-names)))
           (setf (u:href table name) t)
           sym))))
@@ -177,11 +177,8 @@ then print out the result of which form failed."
 
 
 
-
-
-
-
-(defun doit3 (&optional (node-count 3) (column-count 3) (verbose nil))
+(defun sorting-class/random/single-lin
+    (&optional (node-count 3) (column-count 3) (verbose nil))
   (let* ((raw-db (mapcar (lambda (x)
                            (list (first x) (second x)
                                  (append (third x) '(p i))))
@@ -200,10 +197,10 @@ then print out the result of which form failed."
     (unless (assert-validity-rules raw-db
               (a1::rule-db/sorting-classes-syntactically-well-formed raw-db)
               (a1::rule-db/validate-parent-count raw-db))
-      (return-from doit3 nil))
+      (return-from sorting-class/random/single-lin nil))
 
     (let* (
-	   (linearization (a1::linearize db)))
+           (linearization (a1::linearize db)))
 
       (when verbose
         (format *test-stream*
@@ -225,13 +222,14 @@ then print out the result of which form failed."
 
       linearization)))
 
-(defun doit4 (&optional (n 128))
+(defun sorting-class/random/many-lin (&optional (n 1024))
   (loop :for i :below n
-        :always (doit3 (+ 5 (random 5)) (+ 10 (random 10)))))
+        :always (sorting-class/random/single-lin
+                 (+ 5 (random 5)) (+ 10 (random 10)))))
 
 
 
-(defun doit5 ()
+(defun sorting-class/rule-db ()
   (let* ((raw-db '((v::sort/base () (p i))
                    (foo (v::sort/base) (z p i))
                    (qux (foo) (d e z f p i))
