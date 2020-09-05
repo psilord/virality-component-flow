@@ -4,6 +4,7 @@
 
 (setf *default-reporter* :list) ;; Fix my theme so :list works.
 (setf *enable-colors* nil)
+(setf prove:*debug-on-error* t)
 
 (plan nil) ;; number of subtests to plan or NIL if not sure yet.
 

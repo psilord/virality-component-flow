@@ -16,6 +16,10 @@
                         ;; Key is column name, Value is column value.
                         :initform (u:dict #'eq))))
 
+;; NOTE: for sort/base's p column (the package qualified component name symbol)
+;; and the i column (the integer serial num), ensure that p is sorted by either
+;; package/symbol or symbol/package but not just by its symbol name alone.
+
 (defun column-value (instance column-name)
   (multiple-value-bind (value present-p)
       (u:href (column-values instance) column-name)
@@ -35,6 +39,25 @@
 
 
 
+(defun lexicographic/package-then-symbol-< (left right)
+  (let* ((left-package-name (package-name (symbol-package left)))
+         (right-package-name (package-name (symbol-package right)))
+         (left-name (symbol-name left))
+         (right-name (symbol-name right)))
+
+    (if (string= left-package-name right-package-name)
+        (string< left-name right-name)
+        (string< left-package-name right-package-name))))
+
+(defun lexicographic/symbol-then-package-< (left right)
+  (let ((left-package-name (package-name (symbol-package left)))
+        (right-package-name (package-name (symbol-package right)))
+        (left-name (symbol-name left))
+        (right-name (symbol-name right)))
+
+    (if (string= left-name right-name)
+        (string< left-package-name right-package-name)
+        (string< left-name right-name))))
 
 ;; How sorting classes are implemented and works.
 
@@ -64,13 +87,15 @@
                         (incf (u:href shash col))))
     (setf total-columns (hash-table-count shash))
 
-    ;; 2. Sort sorting class by 1) number of columns, then 2) lexical type
+    ;; 2. Sort sorting class by 1) number of columns, then 2) by symbol name,
+    ;;    3) package name
     (let ((db (sort db (lambda (left right)
                          (destructuring-bind (lname lcols) left
                            (destructuring-bind (rname rcols) right
                              (cond
                                ((= (length lcols) (length rcols))
-                                (string< lname rname))
+                                (lexicographic/symbol-then-package-<
+                                 lname rname))
 
                                ((> (length lcols) (length rcols))
                                 T)
@@ -150,9 +175,20 @@
 ;; If any derived sorting class has a conflicting order for two sorting
 ;; columns, it is an error.
 
+;; We _MUST_ have a group name for DEFINE-SORTING-CLASSES. This is so that we
+;; can differentiate between when a user defines a group with a different body
+;; containing a sorting class with a different parent than the previous
+;; definition, and two distinct groups containing the same sorting class with a
+;; different parent for each group (invalid).
+
 ;;;; raw-db validation pass (attempt to run in this order)
 
-;; [x] rule-db/sorting-class-syntactically-well-formed
+;;;;
+;;;; Rules to typecheck an individual sorting class form:
+;;;;
+
+;; [x] rule-db/sorting-classes-syntactically-well-formed [raw-db as a whole]
+;; [x] rule-db/sorting-class-syntactically-well-formed [individual sc form]
 ;;     <acts upon a single sorting-class form>
 ;; Each sorting class must have a
 ;;  name: a single symbol
@@ -173,13 +209,20 @@
 ;; [x] rule-db/sort-class-may-not-be-its-own-parent
 ;;     A sorting class cannot be its own parent in a sorting class form
 
+;; [ ] rule-db/no-duplicate-parents
+;;     Each of the sorting class parents must be unique in the parent list.
+;;     No NIL/T, or keywords, in the parents list.
+
+;;;;
+;;;; Rules to typecheck an individual sorting class form wrt the entire
+;;;; currently known set of sorting-classes:
+;;;;
+
 ;; [ ] rule-db/no-forward-parent-declarations
-;;     <acts upon a the full raw-db of sorting-class forms>
 ;;     A raw-db sorting-class cannot use a parent sorting-class which
 ;;     hasn't been seen before.
 
 ;; [ ] rule-db/column-definitions-and-references-well-formed
-;;     <acts upon a the full raw-db of sorting-class forms>
 ;;     When a column is first defined in a sorting class hierarchy, it REQUIRES
 ;;     a comparator function and default to be paired with it. It can only be
 ;;     defined once.
@@ -187,87 +230,88 @@
 ;;     When a column previously defined in the sorting hierarchy is referenced,
 ;;     it MUST NOT supply a comparator function or default.
 
-;; [ ] rule-db/canonicalize-for-linearization
-;;     Canonicalize the raw-db to remove the column sorting function names.
-;;     It strictly means removing the function comparators and making the
-;;     columns a pure symbol name.
-
 ;; [ ] rule-db/valid-column-inheritance
 ;;     Ensure that all columns in a particular raw-db came from either itself,
 ;;     or some parent in the hierarchy.
 
-;; [ ] rule-db/no-duplicate-parents
-;;     Each of the sorting class parents must be unique in the parent list.
-;;     No NIL/T, or keywords, in the parents list.
-
 ;; [ ] rule-db/sorting-class-unique
-;;     Each sorting class name in a raw-db must be a unique name.
+;;     Duplicate sorting class names that are in different packages are
+;;     allowed.
 ;;     Duplicate column names that are in different packages are allowed.
 
 ;; [ ] rule-db/all-column-pairs-preserve-order
 ;;     All pairs of columns for each sorting-class must preserve their
 ;;     order in all classes that used those columns.
 
+;; ------------------------------
+
+
+
+
 ;; And then, if all the above passes, we can pass it to LINEARIZE.
 
+(defun process-sorting-classes (func raw-db)
+  "Execute FUNC on each destructured sorting-class form in RAW-DB collecting
+the results and then return the result list."
+  (loop
+    :for spec :in raw-db
+    :do (unless (listp spec)
+          (error "process-rules: sorting-class form is not a list"))
+    :collect (destructuring-bind (sc-name parents colnames) spec
+               (funcall func sc-name parents colnames))
+      :into result
+    :finally (return (nreverse result))))
 
 ;;;; Raw-db type rules.
-(defun rule-db/sorting-class-syntactically-well-formed (raw-db)
-  (unless (listp raw-db)
-    (error "raw-db is not a list"))
+(defun rule-db/sorting-class-syntactically-well-formed (sc parents cols)
 
-  (labels ((invalid-symbol (item)
-             ;; a symbol that cannot be a certain subset of symbols.
-             (and (symbolp item)
-                  (or (keywordp item)
-                      (eq item nil)
-                      (eq item t))))
+  (flet ((invalid-symbol (item)
+           ;; a symbol that cannot be a certain subset of symbols.
+           (and (symbolp item)
+                (some #'identity
+                      (member (symbol-package item)
+                              (mapcar #'find-package
+                                      '(nil :common-lisp :keyword)))))))
 
-           (process-sorting-class (spec)
-             (unless (listp spec)
-               (error "spec is not a list"))
+    (when (invalid-symbol sc)
+      (error "spec name is not a valid symbol"))
+    (unless (listp parents)
+      (error "spec parents is not a cons"))
+    (unless (consp cols)
+      (error "spec columns is not a cons"))
 
-             (destructuring-bind (&optional sc parents cols) spec
-               (when (invalid-symbol sc)
-                 (error "spec name is not a valid symbol"))
-               (unless (listp parents)
-                 (error "spec parents is not a cons"))
-               (unless (consp cols)
-                 (error "spec columns is not a cons"))
+    (dolist (parent parents)
+      (when (not (symbolp parent))
+        (error "spec parent is not a symbol"))
+      (when (invalid-symbol parent)
+        (error "spec parent is not a valid symbol")))
 
-               (dolist (parent parents)
-                 (when (not (symbolp parent))
-                   (error "spec parent is not a symbol"))
-                 (when (invalid-symbol parent)
-                   (error "spec parent is not a valid symbol")))
+    (dolist (col cols)
+      (cond
+        ((symbolp col)
+         (when (invalid-symbol col)
+           (error "spec col is not a proper symbol.")))
+        ((consp col)
+         (destructuring-bind (&optional col-name . comparator) col
+           (when (invalid-symbol col-name)
+             (error "spec col name in compound form is wrong."))
+           (cond
+             ((= (length comparator) 1)
+              (when (invalid-symbol (first comparator))
+                (error "spec col comparator is invalid."))
+              t)
+             (t
+              (error "spec col compound form is invalid.")))))))
 
-               (dolist (col cols)
-                 (cond
-                   ((symbolp col)
-                    (when (invalid-symbol col)
-                      (error "spec col is not a proper symbol.")))
-                   ((consp col)
-                    (destructuring-bind (&optional col-name . comparator) col
-                      (when (invalid-symbol col-name)
-                        (error "spec col name in compound form is wrong."))
-                      (cond
-                        ((= (length comparator) 1)
-                         (when (invalid-symbol (first comparator))
-                           (error "spec col comparator is invalid."))
-                         t)
-                        (t
-                         (error "spec col compound form is invalid."))))))))))
+    t))
 
-    (dolist (spec raw-db)
-      (process-sorting-class spec)))
+(defun rule-db/sorting-classes-syntactically-well-formed (raw-db)
+  (process-sorting-classes
+   #'rule-db/sorting-class-syntactically-well-formed raw-db)
   t)
 
-(defun process-rule (func raw-db)
-  (loop :for (sc-name parents . colnames) :in raw-db
-        :do (funcall func sc-name parents colnames)))
-
 (defun rule-db/validate-parent-count (raw-db)
-  (process-rule
+  (process-sorting-classes
    (lambda (sc-name parents colnames)
      (declare (ignore colnames))
      (if (eq sc-name 'sort/base)
@@ -280,7 +324,7 @@
   t)
 
 (defun rule-db/sort-class-may-not-be-its-own-parent (raw-db)
-  (process-rule
+  (process-sorting-classes
    (lambda (sc-name parents colnames)
      (declare (ignore colnames))
      (when (member sc-name parents)
@@ -289,6 +333,17 @@
    raw-db)
   t)
 
+(defun rule-db/no-forward-parent-declarations (raw-db)
+  ;; Look up in the metadata for is these parents have been seen before.
+  ;; If so, all is good, if not, it is a forward declaration.
+  ;; NOTE: This assume rule-db/parents-must-be-non-nil has happened.
+  (symbol-macrolet ((known-classes
+                      (u:href =meta/sorting-classes= 'known-sorting-classes)))
+    (loop :for (sc-name parents . colnames) :in raw-db
+          :do (dolist (parent parents)
+                (u:unless-found (parent-class (u:href known-classes parent))
+                  (error "Sorting-class ~A must be previously defined."
+                         parent))))))
 
 
 
@@ -303,7 +358,7 @@ known-sorting-classes -> HASH_TABLE[Key: sorting-class-sym, Value: T]
 
 |#
 
-
+;; don't use
 (defun insert-known-sorting-class (sorting-class-name)
   (symbol-macrolet ((known-classes
                       (u:href =meta/sorting-classes= 'known-sorting-classes)))
@@ -312,6 +367,7 @@ known-sorting-classes -> HASH_TABLE[Key: sorting-class-sym, Value: T]
 
     (setf (u:href known-classes sorting-class-name) t)))
 
+;; don't use
 (defun lookup-known-sorting-class (sorting-class-name)
   (symbol-macrolet ((known-classes
                       (u:href =meta/sorting-classes= 'known-sorting-classes)))
@@ -320,19 +376,83 @@ known-sorting-classes -> HASH_TABLE[Key: sorting-class-sym, Value: T]
 
     (u:href known-classes sorting-class-name)))
 
+;; Representation of the meta data of a sorting class
+(eval-when (:compile-toplevel :load-toplevel)
+  (defclass sorting-class-group-descriptor ()
+    ((%name :accessor name
+            :initarg :name)
+     (%forms :accessor forms
+             :initarg :forms)))
 
-(defun rule-db/no-forward-parent-declarations (raw-db)
-  ;; Look up in the metadata for is these parents have been seen before.
-  ;; If so, all is good, if not, it is a forward declaration.
-  ;; NOTE: This assume rule-db/parents-must-be-non-nil has happened.
-  (symbol-macrolet ((known-classes
-                      (u:href =meta/sorting-classes= 'known-sorting-classes)))
-    (loop :for (sc-name parents . colnames) :in raw-db
-          :do (dolist (parent parents)
-                (u:unless-found (parent-class (u:href known-classes parent))
-                  (error "Sorting-class ~A must be previously defined."
-                         parent))))))
+  (defun make-sorting-class-group-descriptor (&rest init-args)
+    (apply #'make-instance 'sorting-class-group-descriptor init-args)))
 
+
+(defun canonicalize-sorting-class-for-linearization (sc-name parents cols)
+  "Assume the sorting class spec is syntactically well formed.
+Return the sorting-class with the sorter functions and defaults removed."
+  (list sc-name
+        (mapcar (lambda (col)
+                  (cond
+                    ((symbolp col)
+                     col)
+                    ((listp col)
+                     (car col))
+                    (t
+                     (error
+                      "canonicalize-sorting-class-for-linearization: ~
+                             The sorting class was not well formed!: ~A"
+                      (list sc-name parents cols)))))
+                cols)))
+
+(defun canonicalize-sorting-classes-for-linearization (raw-db)
+  (process-sorting-classes
+   #'canonicalize-sorting-class-for-linearization
+   raw-db))
+
+
+(defmacro define-sorting-classes (name () &body body)
+  (unless (symbolp name)
+    (error "Cannot define a sorting class group name with non symbol: ~S"
+           name))
+
+  (let* ((group-p (find name =meta/sorting-classes= :key #'name))
+         (group (or group-p (make-sorting-class-group-descriptor))))
+
+    ;; TODO: Validate the incoming change BEFORE we actually update the meta
+    ;; list.  Prolly do it in such a way that if the validation fails we don't
+    ;; disturb the metadata so the image doesn't get corrupted with bad data.
+
+    (setf (name group) name
+          (forms group) body)
+
+    (unless group-p
+      (u:appendf =meta/sorting-classes= (list group)))
+
+    (u:mappend #'forms =meta/sorting-classes=)
+
+    ;; currently, we don't actually expand to anything real.
+
+    ;; Ensure to insert the p and i symbols (in the right package) at the right
+    ;; end of the sorting colum list for each sorting class.
+    `(progn)
+    ))
+
+
+(define-sorting-classes test1 ()
+  (render-layer (sort/base) (a d f))
+  (foobar-layer (render-layer) (a k d f))
+  (integer-sort (sort/base) (v)))
+
+(define-sorting-classes test2 ()
+  (render-layer2 (sort/base) (a d f))
+  (foobar-layer2 (render-layer2) (a k d f))
+  (integer-sort2 (sort/base) (v)))
+
+;; ordered-list of sc-descrptors in order of compilation.
+
+;; Note about group rules:
+;;
 
 
 ;;;; linearization validation pass:
@@ -384,9 +504,6 @@ known-sorting-classes -> HASH_TABLE[Key: sorting-class-sym, Value: T]
 
 
 
-(defmacro define-sorting-classes (name () &body body)
-  (declare (ignore name body))
-  nil)
 
 (defmacro define-column-sorter (sortclass new-func &body body)
   (declare (ignore sortclass new-func body))
@@ -410,7 +527,7 @@ known-sorting-classes -> HASH_TABLE[Key: sorting-class-sym, Value: T]
 
 
 ;; Additional content related to C-c C-c and C-c C-k and duplicate forms of
-;; the same define-sroting-classes macro.
+;; the same define-sorting-classes macro.
 ;;
 ;; Prerequisites:
 ;;  Each define-sorting-class has a "group name" and the sorting classes are

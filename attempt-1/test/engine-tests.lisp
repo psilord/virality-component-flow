@@ -5,6 +5,10 @@
 ;; bind this to T in order to see the output in the repl.
 (defvar *test-stream* nil)
 
+;; A package where we dump sorting class names and columns for gen-db. They
+;; always need a home package and cannot be uninterned.
+(defpackage #:test-sorting-class-names)
+
 (defmacro assert-validity-rules (raw-db &body rules)
   "Assert a sequence of predicates. Do not short circuit. If it fails,
 then print out the result of which form failed."
@@ -98,7 +102,8 @@ then print out the result of which form failed."
                (u:random-elt net.mfiano.lisp.algae.rng::+dictionary+))))
     (if (u:href table name)
         (gen-name table)
-        (let ((sym (make-symbol name)))
+	;; The names must be in a home package.
+        (let ((sym (intern (string-upcase name) :test-sorting-class-names)))
           (setf (u:href table name) t)
           sym))))
 
@@ -189,17 +194,16 @@ then print out the result of which form failed."
                       (bar (foo) (a z b c p i))))
          (all-columns (remove-duplicates
                        (u:flatten (mapcar #'third raw-db))))
-         (db (mapcar (lambda (x)
-                       (list (first x) (third x)))
-                     raw-db))
+         (db (a1::canonicalize-sorting-classes-for-linearization raw-db))
          )
 
     (unless (assert-validity-rules raw-db
-              (a1::rule-db/sorting-class-syntactically-well-formed raw-db)
+              (a1::rule-db/sorting-classes-syntactically-well-formed raw-db)
               (a1::rule-db/validate-parent-count raw-db))
       (return-from doit3 nil))
 
-    (let ((linearization (a1::linearize db)))
+    (let* (
+	   (linearization (a1::linearize db)))
 
       (when verbose
         (format *test-stream*
@@ -236,7 +240,7 @@ then print out the result of which form failed."
                    (bar (foo) (a z b c p i)))))
 
     (assert-validity-rules raw-db
-      (a1::rule-db/sorting-class-syntactically-well-formed raw-db)
+      (a1::rule-db/sorting-classes-syntactically-well-formed raw-db)
       (a1::rule-db/validate-parent-count raw-db)
       (a1::rule-db/sort-class-may-not-be-its-own-parent raw-db)
       #++(a1::rule-db/no-forward-parent-declarations raw-db))))
