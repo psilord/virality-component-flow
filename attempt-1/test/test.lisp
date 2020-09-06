@@ -46,49 +46,50 @@
 (subtest "lexicographic/package-then-symbol-<"
   (plan 10)
 
-  ;; attempt-1:a is less than attempt-1:b
-  (ok (a1::lexicographic/package-then-symbol-<
-       'attempt-1::a 'attempt-1::b))
+  (ok (a1::lexicographic/package-then-symbol-< 'attempt-1::a 'attempt-1::b)
+      "attempt-1:a lexicographic/package-then-symbol-< attempt-1:b")
 
-  ;; attempt-1:b is not less than attempt-1:a
-  (ok (not (a1::lexicographic/package-then-symbol-<
-            'attempt-1::b 'attempt-1::a)))
+  (ok
+   (not (a1::lexicographic/package-then-symbol-< 'attempt-1::b 'attempt-1::a))
+   "not ( attempt-1:blexicographic/package-then-symbol-< attempt-1:a )")
 
   ;; attempt-1:a is less than common-lisp:a because
   ;; attempt-1 package name is less than common-lisp package name.
-  (ok (a1::lexicographic/package-then-symbol-<
-       'attempt-1::a 'cl-user::a))
+  (ok (a1::lexicographic/package-then-symbol-< 'attempt-1::a 'cl-user::a)
+      "attempt-1:a lexicographic/package-then-symbol-< common-lisp:a")
 
   ;; common-lisp:a is not less than attempt-1:a because
   ;; common-lisp package name is not less than attemot-1 package name.
-  (ok (not (a1::lexicographic/package-then-symbol-<
-            'cl-user::a 'attempt-1::a)))
+  (ok
+   (not (a1::lexicographic/package-then-symbol-< 'cl-user::a 'attempt-1::a))
+   "not ( common-lisp:a lexicographic/package-then-symbol-< attempt-1:a )")
 
-  ;; common-lisp:a is less than common-lisp:b
-  (ok (a1::lexicographic/package-then-symbol-<
-       'cl-user::a 'cl-user::b))
+  (ok (a1::lexicographic/package-then-symbol-< 'cl-user::a 'cl-user::b)
+      "common-lisp:a lexicographic/package-then-symbol-< common-lisp:b")
 
-  ;; common-lisp:b is not less than common-lisp:a
-  (ok (not (a1::lexicographic/package-then-symbol-<
-            'cl-user::b 'cl-user::a)))
+  (ok
+   (not (a1::lexicographic/package-then-symbol-< 'cl-user::b 'cl-user::a))
+   "not ( common-lisp:b lexicographic/package-then-symbol-< common-lisp:a )")
 
   ;; attempt-1:z is less than common-lisp:a because package attempt-1 is less
   ;; that common-lisp
-  (ok (a1::lexicographic/package-then-symbol-<
-       'attempt-1::z 'cl-user::a))
+  (ok (a1::lexicographic/package-then-symbol-< 'attempt-1::z 'cl-user::a)
+      "attempt-1:z lexicographic/package-then-symbol-< common-lisp:a")
 
-  ;; common-lisp:z is not less than attemp-1:a because package attempt-1 is
+  ;; common-lisp:z is not less than attempt-1:a because package attempt-1 is
   ;; not less than common-lisp
-  (ok (not (a1::lexicographic/package-then-symbol-<
-            'cl-user::z 'attempt-1::a)))
+  (ok
+   (not (a1::lexicographic/package-then-symbol-< 'cl-user::z 'attempt-1::a))
+   "not ( common-lisp:z lexicographic/package-then-symbol-< attempt-1:a )")
 
   ;; :a is less than :b
-  (ok (a1::lexicographic/package-then-symbol-<
-       :a :b))
+  (ok (a1::lexicographic/package-then-symbol-< :a :b)
+      ":a lexicographic/package-then-symbol-< :b")
 
   ;; :b is not less than :a
-  (ok (not (a1::lexicographic/package-then-symbol-<
-            :b :a)))
+  (ok
+   (not (a1::lexicographic/package-then-symbol-< :b :a))
+   "not ( :b lexicographic/package-then-symbol-< :a )")
 
   ;; NOTE: We don't test uninterned symbols (which is actually super
   ;; hard because they are incomparable). There doesn't seem to be a
