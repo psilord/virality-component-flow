@@ -40,7 +40,9 @@
       "Random many random linearizations")
 
   (ok (sorting-class/rule-db)
-      "Test rule-db rules on sorting classes & groups"))
+      "Test rule-db rules on sorting classes & groups")
+
+  (finalize))
 
 
 (subtest "lexicographic/package-then-symbol-<"
@@ -86,6 +88,7 @@
   ;; way to compare them meaningfully since each uninterned symbol is
   ;; treated as if it is in it own package (with no name).
 
+  (finalize)
   )
 
 (subtest "lexicographic/symbol-then-package-<"
@@ -130,6 +133,8 @@
   ;; hard because they are incomparable). There doesn't seem to be a
   ;; way to compare them meaningfully since each uninterned symbol is
   ;; treated as if it is in it own package (with no name).
+
+  (finalize)
 
   )
 
