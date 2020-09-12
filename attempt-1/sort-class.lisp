@@ -267,48 +267,47 @@ the results and then return the result list."
       :into result
     :finally (return (nreverse result))))
 
+(defun valid-sorting-class-token (token)
+  "Check to see if TOKEN is a symbol that has a home package and the package
+is not :common-lisp or :keyword."
+  (and (symbolp token)
+       (notany #'identity
+               (member (symbol-package token)
+                       (mapcar #'find-package
+                               '(nil :common-lisp :keyword))))))
+
 ;;;; Raw-db type rules.
 (defun rule-db/sorting-class-syntactically-well-formed (sc parents cols)
+  (unless (valid-sorting-class-token sc)
+    (error "spec name is not a valid symbol"))
+  (unless (listp parents)
+    (error "spec parents is not a cons"))
+  (unless (consp cols)
+    (error "spec columns is not a cons"))
 
-  (flet ((invalid-symbol (item)
-           ;; a symbol that cannot be a certain subset of symbols.
-           (and (symbolp item)
-                (some #'identity
-                      (member (symbol-package item)
-                              (mapcar #'find-package
-                                      '(nil :common-lisp :keyword)))))))
+  (dolist (parent parents)
+    (when (not (symbolp parent))
+      (error "spec parent is not a symbol"))
+    (unless (valid-sorting-class-token parent)
+      (error "spec parent is not a valid symbol")))
 
-    (when (invalid-symbol sc)
-      (error "spec name is not a valid symbol"))
-    (unless (listp parents)
-      (error "spec parents is not a cons"))
-    (unless (consp cols)
-      (error "spec columns is not a cons"))
-
-    (dolist (parent parents)
-      (when (not (symbolp parent))
-        (error "spec parent is not a symbol"))
-      (when (invalid-symbol parent)
-        (error "spec parent is not a valid symbol")))
-
-    (dolist (col cols)
-      (cond
-        ((symbolp col)
-         (when (invalid-symbol col)
-           (error "spec col is not a proper symbol.")))
-        ((consp col)
-         (destructuring-bind (&optional col-name . comparator) col
-           (when (invalid-symbol col-name)
-             (error "spec col name in compound form is wrong."))
-           (cond
-             ((= (length comparator) 1)
-              (when (invalid-symbol (first comparator))
-                (error "spec col comparator is invalid."))
-              t)
-             (t
-              (error "spec col compound form is invalid.")))))))
-
-    t))
+  (dolist (col cols)
+    (cond
+      ((symbolp col)
+       (unless (valid-sorting-class-token col)
+         (error "spec col is not a proper symbol.")))
+      ((consp col)
+       (destructuring-bind (&optional col-name . comparator) col
+         (unless (valid-sorting-class-token col-name)
+           (error "spec col name in compound form is wrong."))
+         (cond
+           ((= (length comparator) 1)
+            (unless (valid-sorting-class-token (first comparator))
+              (error "spec col comparator is invalid."))
+            t)
+           (t
+            (error "spec col compound form is invalid.")))))))
+  t)
 
 (defun rule-db/sorting-classes-syntactically-well-formed (raw-db)
   (process-sorting-classes
