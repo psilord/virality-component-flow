@@ -43,9 +43,9 @@
          (right-name (symbol-name right)))
 
     (let ((result
-	    (if (string= left-package-name right-package-name)
-		(string< left-name right-name)
-		(string< left-package-name right-package-name))))
+            (if (string= left-package-name right-package-name)
+                (string< left-name right-name)
+                (string< left-package-name right-package-name))))
       ;; Crunch it to boolean instead of geneeralized boolean.
       ;; Make prove tests more understandable.
       (if result t nil))))
@@ -57,9 +57,9 @@
         (right-name (symbol-name right)))
 
     (let ((result
-	    (if (string= left-name right-name)
-		(string< left-package-name right-package-name)
-		(string< left-name right-name))))
+            (if (string= left-name right-name)
+                (string< left-package-name right-package-name)
+                (string< left-name right-name))))
       ;; Crunch it to boolean instead of geneeralized boolean.
       ;; Make prove tests more understandable.
       (if result t nil))))
@@ -267,14 +267,15 @@ the results and then return the result list."
       :into result
     :finally (return (nreverse result))))
 
-(defun valid-sorting-class-token (token)
-  "Check to see if TOKEN is a symbol that has a home package and the package
+(u:eval-always
+  (defun valid-sorting-class-token (token)
+    "Check to see if TOKEN is a symbol that has a home package and the package
 is not :common-lisp or :keyword."
-  (and (symbolp token)
-       (notany #'identity
-               (member (symbol-package token)
-                       (mapcar #'find-package
-                               '(nil :common-lisp :keyword))))))
+    (and (symbolp token)
+         (notany #'identity
+                 (member (symbol-package token)
+                         (mapcar #'find-package
+                                 '(nil :common-lisp :keyword)))))))
 
 ;;;; Raw-db type rules.
 (defun rule-db/sorting-class-syntactically-well-formed (sc parents cols)
@@ -381,16 +382,28 @@ known-sorting-classes -> HASH_TABLE[Key: sorting-class-sym, Value: T]
     (u:href known-classes sorting-class-name)))
 
 ;; Representation of the meta data of a sorting class
-(eval-when (:compile-toplevel :load-toplevel)
+(u:eval-always
   (defclass sorting-class-group-descriptor ()
     ((%name :accessor name
             :initarg :name)
-     (%forms :accessor forms
-             :initarg :forms)))
+     (%user-form :accessor user-form
+                 :initarg :user-form)))
 
   (defun make-sorting-class-group-descriptor (&rest init-args)
     (apply #'make-instance 'sorting-class-group-descriptor init-args)))
 
+(defun duplicate/=meta-sorting-classes= ()
+  "While this copy stops at non-cons instances of things, the
+DEFINE-SORTING-CLASSES DSL doesn't currently allow such things."
+  (mapcar (lambda (descriptor)
+            (make-sorting-class-group-descriptor
+             :name (name descriptor)
+             :user-form (copy-tree (user-form descriptor))))
+          =meta/sorting-classes=))
+
+;; The two columnnames representing sort/base's rightmost columns that the
+;; user may never specify themselves.
+;; v::component-type v::serial-number
 
 (defun canonicalize-sorting-class-for-linearization (sc-name parents cols)
   "Assume the sorting class spec is syntactically well formed.
@@ -414,34 +427,77 @@ Return the sorting-class with the sorter functions and defaults removed."
    #'canonicalize-sorting-class-for-linearization
    raw-db))
 
-
-(defmacro define-sorting-classes (name () &body body)
+(defun process-sorting-classes-mutation (name body)
   (unless (symbolp name)
     (error "Cannot define a sorting class group name with non symbol: ~S"
            name))
 
   (let* ((group-p (find name =meta/sorting-classes= :key #'name))
-         (group (or group-p (make-sorting-class-group-descriptor))))
+         (group (or group-p (make-sorting-class-group-descriptor)))
+
+         ;; Make a copy for validation purposes
+         (copy/metadata (duplicate/=meta-sorting-classes=))
+         (copy/group-p (find name copy/metadata :key #'name))
+         (copy/group (or copy/group-p (make-sorting-class-group-descriptor))))
 
     ;; TODO: Validate the incoming change BEFORE we actually update the meta
-    ;; list.  Prolly do it in such a way that if the validation fails we don't
-    ;; disturb the metadata so the image doesn't get corrupted with bad data.
+    ;; list.  Instead of doing a transaction-like algorithm with the real
+    ;; metadata list, we "deep copy" the metadata list and attempt to adjust
+    ;; it. If the adjustment works, then we know it'll work for the real one
+    ;; and just do the change for the real one.
 
-    (setf (name group) name
-          (forms group) body)
+    ;; TODO: Keep Going on the validation code.
 
+    ;; Make the change on the duplicate list.
+    (reinitialize-instance copy/group :name name :user-form body)
+    (unless copy/group-p
+      (u:appendf copy/metadata (list copy/group)))
+
+    ;; Validate the duplicate list that everything is ok.
+    ;; Error on failure, which prevents the rest of the function from
+    ;; executing.
+
+    ;; AND THEN
+    ;; If the duplicated list was actually ok, then perform the change for
+    ;; real.
+    (reinitialize-instance group :name name :user-form body)
     (unless group-p
       (u:appendf =meta/sorting-classes= (list group)))
 
-    (u:mappend #'forms =meta/sorting-classes=)
+    ;; create a list of all sorting classes so far. Unused right now.
+    (u:mappend #'user-form =meta/sorting-classes=)
 
-    ;; currently, we don't actually expand to anything real.
+    t))
 
-    ;; Ensure to insert the p and i symbols (in the right package) at the right
-    ;; end of the sorting colum list for each sorting class.
-    `(progn)
-    ))
+(u:eval-always
+  (defun compute-sorting-class-defclass-forms (body)
+    ;; NOTE: If v::*core-debug* is bound, this should expand into a
+    ;; packet that inserts itself into the recompilation queue.
 
+    ;; If v::*core-debug* is not bound, it should just expand into the
+    ;; literal list of defclass forms for the sorting classes (we know
+    ;; the game isn't running or we're compilng freshly).
+
+    ;; Currently, we only implement the second option above.
+    (remove-if #'null
+               (loop :for (name parents columns) :in body
+                     :collect (when (and (valid-sorting-class-token name)
+                                         (listp parents))
+                                ;; TODO: probably not complete of a
+                                ;; representation yet. Need sort/base, etc.
+                                `(defclass ,name ,parents ()))))))
+
+(defmacro define-sorting-classes (name () &body body)
+  `(progn
+     ;; If this expansion executing at compile-time discovers that the mutation
+     ;; is going to fail (without having performed any of the mutation in the
+     ;; actual metadata) then it will ERROR. This will prevent the rest of this
+     ;; PROGN from exceuting, preventing the defclass forms from being
+     ;; evaluated.
+     (process-sorting-classes-mutation ',name ',body)
+
+     ,@(compute-sorting-class-defclass-forms body)
+     ))
 
 (define-sorting-classes test1 ()
   (render-layer (sort/base) (a d f))

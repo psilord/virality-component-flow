@@ -9,10 +9,13 @@
 (eval-when (:compile-toplevel :load-toplevel)
   (global-vars:define-global-var =meta/sorting-classes= (list)))
 
-;;      (u:dict #'eq
-;;              'known-sorting-classes (u:dict #'eq 'sort/base t))))
-
 ;; Don't copy into V.
 (defmacro define-component (name (&rest parents) &body body)
   (declare (ignore name parents body))
   nil)
+
+
+(defun copy (object)
+  (if (typep object 'sequence)
+      (map-into (copy-seq object) #'copy object)
+      object))
