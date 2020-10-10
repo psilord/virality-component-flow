@@ -8,8 +8,9 @@
   ;; SBCL will warn if a slot with the same name but a different package
   ;; exists. So, we name ours a little funny to reduce the chance it will
   ;; conflict with a gamedev slotname.
-  ((%100v-sorting-type :reader sorting-type
-                       ;; What key do we put here? sort class name?
+  ((sorting-class-type :reader sorting-class-type
+                       ;; Holds the sort class symbol name in the correct
+                       ;; package
                        :initform 'sort/base)
    ;; hash table of column names to values.
    (%100v-column-values :reader column-values
@@ -34,6 +35,10 @@
   ;; mutation phases have completed.
   (setf (u:href (column-values instance) column-name)
         new-val))
+
+
+
+
 
 
 (defun lexicographic/package-then-symbol-< (left right)
@@ -427,12 +432,24 @@ Return the sorting-class with the sorter functions and defaults removed."
    #'canonicalize-sorting-class-for-linearization
    raw-db))
 
+(defun append-internal-sorting-columns (body)
+  "Add the internal sorting columns of COMPONENT-TYPE and INSTANCE-ID
+on the right most side of each sorting class column set. But don't do it
+on V:sort/base."
+  (loop :for (sc-name parents cols) :in body
+        :collect (if (eq sc-name 'sort/base)
+                     (list sc-name parents cols)
+                     (list sc-name parents (append cols '(component-type
+                                                          instance-id))))))
+
 (defun process-sorting-classes-mutation (name body)
   (unless (symbolp name)
     (error "Cannot define a sorting class group name with non symbol: ~S"
            name))
 
-  (let* ((group-p (find name =meta/sorting-classes= :key #'name))
+  (let* ((body/added-internal-columns
+           (append-internal-sorting-columns body))
+         (group-p (find name =meta/sorting-classes= :key #'name))
          (group (or group-p (make-sorting-class-group-descriptor)))
 
          ;; Make a copy for validation purposes
@@ -449,7 +466,9 @@ Return the sorting-class with the sorter functions and defaults removed."
     ;; TODO: Keep Going on the validation code.
 
     ;; Make the change on the duplicate list.
-    (reinitialize-instance copy/group :name name :user-form body)
+    (reinitialize-instance copy/group
+                           :name name
+                           :user-form body/added-internal-columns)
     (unless copy/group-p
       (u:appendf copy/metadata (list copy/group)))
 
@@ -460,7 +479,9 @@ Return the sorting-class with the sorter functions and defaults removed."
     ;; AND THEN
     ;; If the duplicated list was actually ok, then perform the change for
     ;; real.
-    (reinitialize-instance group :name name :user-form body)
+    (reinitialize-instance group
+                           :name name
+                           :user-form body/added-internal-columns)
     (unless group-p
       (u:appendf =meta/sorting-classes= (list group)))
 
@@ -485,7 +506,10 @@ Return the sorting-class with the sorter functions and defaults removed."
                                          (listp parents))
                                 ;; TODO: probably not complete of a
                                 ;; representation yet. Need sort/base, etc.
-                                `(defclass ,name ,parents ()))))))
+                                `(defclass ,name ,parents ()
+                                   (:default-initargs
+                                    :sorting-class-type ',name)
+                                   ))))))
 
 (defmacro define-sorting-classes (name () &body body)
   `(progn
@@ -499,15 +523,120 @@ Return the sorting-class with the sorter functions and defaults removed."
      ,@(compute-sorting-class-defclass-forms body)
      ))
 
-(define-sorting-classes test1 ()
-  (render-layer (sort/base) (a d f))
-  (foobar-layer (render-layer) (a k d f))
-  (integer-sort (sort/base) (v)))
+;; in core V for default sorting-classes used by V supplied components.
+(define-sorting-classes virality-core ()
+  ;; For this class, both of these columns shall have defaults that are
+  ;; never actually used since the initializer function for the sorting
+  ;; class will fill in the right vlaues automatically upon construction.
+  (sort/base () ((component-type :sorter lexicographic/package-then-symbol-<
+                                 :default :no-instance-shall-have-this-value)
+                 (instance-id :sorter < :default -1)))
 
-(define-sorting-classes test2 ()
-  (render-layer2 (sort/base) (a d f))
-  (foobar-layer2 (render-layer2) (a k d f))
-  (integer-sort2 (sort/base) (v)))
+  (sorting-class/render (sort/base) ((render-layer :sorter < :default 0)))
+
+  ;; TODO: Figure out what is relevant below for default V supplied sorting
+  ;; classes.
+
+  ;; TODO: the commented out form below doesn't fail any parse currently.
+  ;; We need to finish the syntax/typ[e checking of thse forms.
+  ;;(sort/numeric (sort/base) ((sorting-value sorting-value-sort-hook)))
+
+  ;; TODO: Decide what should actually be in this sorting class group for
+  ;; virality.
+  #++(sort/render-layer (sort/base) ((render-layer :sorter render-sort-hook
+                                                   :default :default))))
+
+
+
+;; Reify metadata into core data structure
+
+;; 1. init functions for each sorting-class
+;;   INIT-SORTING-CLASS ->
+;;   set all available columns for that type to their defaults in hash table.
+;; 2. Build a table keyed by left and right sorting-class types whose value
+;;    is an optimized function that performs the actual compare.
+
+;;
+
+;; Pull out (column-name default-value) pairs.
+(defun isolate-defined-columns (sc-name parents cols)
+  (declare (ignorable sc-name parents))
+  (loop :for col-spec :in cols
+        :when (consp col-spec)
+          :collect (destructuring-bind (name &key sorter default) col-spec
+                     (list name sorter default))))
+
+(defun all-pairs (lst)
+  (let ((result nil))
+    (u:map-combinations (lambda (x) (push x result)) lst :length 2)
+    (nreverse result)))
+
+;; engine init-code
+(defun init-sc-compare-table (sorting-class-info)
+  "Walks the metadata for sorting classes and produces the optimized
+comparators for each pair of sorting classes."
+  ;; 1. grovel over =meta/sorting-classes= table
+  ;; 2. build optimized compare func table.
+  ;; hash table: key (type1 type2) -> comparator
+  ;;             key (type2 type1) -> Maybe (not comparator)? Validate when
+  ;; we start whtis code up again.
+
+  (let* ((sorting-classes
+           (mapcar #'first (canon-sorting-specs sorting-class-info)))
+         (all-sorting-class-pairs (all-pairs sorting-classes)))
+
+    ;; TODO: COMPLETE ME to create the optimized function comparators for
+    ;; each sorting/class type pair.
+
+    all-sorting-class-pairs))
+
+
+;; engine init code
+(defun init-sorting-class-info-table (core)
+  "Reifies metadata for sorting class column defaults into the
+sorting-class-info object in core."
+  ;; 1. grovel over metadata and build column default table for core.
+  (let* ((sorting-class-info (sorting-class-info core))
+         (sc-col-default-table (defaults sorting-class-info))
+         (sc-col-sorter-table (sorters sorting-class-info))
+         (sorting-column-defaults ()))
+    (loop :for group-descriptor :in =meta/sorting-classes=
+          :do (process-sorting-classes
+               (lambda (sc parents cols)
+                 (loop :for dc :in (isolate-defined-columns sc parents cols)
+                       :do (push dc sorting-column-defaults)))
+               (user-form group-descriptor)))
+
+    ;; 2a. hash table key: sorting column name, value: default value.
+    ;; 2b. hash table key: sorting column name, value: sorter-func.
+    (dolist (default-form sorting-column-defaults)
+      (destructuring-bind (column-name sorter-func default-value) default-form
+        (setf (u:href sc-col-default-table column-name) default-value
+              (u:href sc-col-sorter-table column-name) sorter-func)))
+
+    ;; 3. Construct linearization and store it.
+    (let* ((all-sorting-class-specs
+             (loop :for group-descriptor :in =meta/sorting-classes=
+                   :append (user-form group-descriptor)))
+           (ascs-canonizalized
+             (canonicalize-sorting-classes-for-linearization
+              all-sorting-class-specs))
+           (linearization (linearize ascs-canonizalized)))
+
+      (setf (linearization sorting-class-info) linearization
+            (canon-sorting-specs sorting-class-info) ascs-canonizalized)
+
+      ;; 4. Compute optimized comparators for each pair of sorting classes.
+      (init-sc-compare-table sorting-class-info))))
+
+
+;; How to compare two sorting class instances.
+(defun sc-compare (sc-left sc-right)
+  (let ((key (cons (sorting-class-type sc-left)
+                   (sorting-class-type sc-right))))
+    ;; TODO: Complete me.
+    (declare (ignore key))
+    #++ (funcall (u:href compare-func-table key) sc-left sc-right)))
 
 ;; ordered-list of sc-descrptors in order of compilation.
 
@@ -576,10 +705,6 @@ Return the sorting-class with the sorter functions and defaults removed."
 
 
 
-;; in core V for default sorting-classes used by V supplied components.
-(define-sorting-classes virality-core ()
-  ;;(sort/numeric (sort/base) ((sorting-value sorting-value-sort-hook)))
-  (sort/render-layer (sort/base) ((render-layer render-sort-hook))))
 
 ;; When assigning comaprator functions, if 'sym-< is not defined, then set it
 ;; to #'< and assume integers. Otherwse, use fdefinition of the sym-< symbol.

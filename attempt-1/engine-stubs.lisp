@@ -19,3 +19,9 @@
   (if (typep object 'sequence)
       (map-into (copy-seq object) #'copy object)
       object))
+
+
+(defun initialize-engine ()
+  (let ((core (make-core)))
+    (init-sorting-class-info-table core)
+    core))

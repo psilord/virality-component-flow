@@ -5,7 +5,7 @@
   (sort/foo (v:sort/base) ((z :sorter < :default 0)
                            (pp :sorter < :default 0)))
   (sort/qux (sort/foo) ((d :sorter < :default 0)
-                        (e :sorter blah :default nil)
+                        (e :sorter blah :default :bottom)
                         z
                         (f :sorter > :default 0)
                         pp))

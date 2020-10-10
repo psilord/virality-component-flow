@@ -202,8 +202,21 @@ each element in those lists."
                  :initarg :initializer
                  :initform nil)))
 
+(defclass sorting-class-info ()
+  ((%sorters :reader sorters
+	     :initform (u:dict #'eq))
+   (%defaults :reader defaults
+	      :initform (u:dict #'eq))
+   (%canon-sorting-specs :accessor canon-sorting-specs)
+   (%linearization :accessor linearization)))
+
+(defun make-sorting-class-info ()
+  (make-instance 'sorting-class-info))
+
 (defclass core ()
-  ((%scene-tree :reader scene-tree)
+  ((%sorting-class-info :reader sorting-class-info
+			:initform (make-sorting-class-info))
+   (%scene-tree :reader scene-tree)
    (%context :accessor context
              :initarg :context
              :initform nil)
