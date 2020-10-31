@@ -223,14 +223,18 @@
 ;;     Each of the sorting class parents must be unique in the parent list.
 ;;     No NIL/T, or keywords, in the parents list.
 
+;; [ ] rule-db/sorting-class-columns-unique
+;;     Each sorting class definition can only have a set of symbols for its
+;;     columns references or definitions that are all distinct symbols.
+
 ;;;;
 ;;;; Rules to typecheck an individual sorting class form wrt the entire
 ;;;; currently known set of sorting-classes:
 ;;;;
 
-;; [ ] rule-db/no-forward-parent-declarations
+;; [ ] rule-db/no-missing-parent-declarations
 ;;     A raw-db sorting-class cannot use a parent sorting-class which
-;;     hasn't been seen before.
+;;     doesn't exist in the whole of the metadata.
 
 ;; [ ] rule-db/column-definitions-and-references-well-formed
 ;;     When a column is first defined in a sorting class hierarchy, it REQUIRES
@@ -242,12 +246,11 @@
 
 ;; [ ] rule-db/valid-column-inheritance
 ;;     Ensure that all columns in a particular raw-db came from either itself,
-;;     or some parent in the hierarchy.
+;;     or its direct(s) parent in the hierarchy.
 
-;; [ ] rule-db/sorting-class-unique
-;;     Duplicate sorting class names that are in different packages are
-;;     allowed.
-;;     Duplicate column names that are in different packages are allowed.
+;; [ ] rule-db/sorting-class-name-unique
+;;     If two sorting classes are defined, their sorting class names must be
+;;     distinct symbols.
 
 ;; [ ] rule-db/all-column-pairs-preserve-order
 ;;     All pairs of columns for each sorting-class must preserve their
@@ -343,17 +346,20 @@ is not :common-lisp or :keyword."
    raw-db)
   t)
 
-(defun rule-db/no-forward-parent-declarations (raw-db)
-  ;; Look up in the metadata for is these parents have been seen before.
-  ;; If so, all is good, if not, it is a forward declaration.
-  ;; NOTE: This assume rule-db/parents-must-be-non-nil has happened.
-  (symbol-macrolet ((known-classes
-                      (u:href =meta/sorting-classes= 'known-sorting-classes)))
+
+;; TODO: Put into prove.
+(defun rule-db/no-missing-parent-declarations (raw-db)
+  (let ((known-classes (u:dict #'eq)))
+    ;; Collect all sorting-class names
     (loop :for (sc-name parents . colnames) :in raw-db
-          :do (dolist (parent parents)
-                (u:unless-found (parent-class (u:href known-classes parent))
-                  (error "Sorting-class ~A must be previously defined."
-                         parent))))))
+          :do (setf (u:href known-classes sc-name) t))
+    ;; Then check that each parents is a member of the known names.
+    (loop :for (sc-name parents . colnames) :in raw-db
+	  :do (dolist (parent parents)
+		(u:unless-found (parent-class (u:href known-classes parent))
+		  (error "Parental sorting-class ~A has not been defined."
+			 parent))))
+    t))
 
 
 
@@ -431,6 +437,7 @@ Return the sorting-class with the sorter functions and defaults removed."
   (process-sorting-classes
    #'canonicalize-sorting-class-for-linearization
    raw-db))
+
 
 (defun append-internal-sorting-columns (body)
   "Add the internal sorting columns of COMPONENT-TYPE and INSTANCE-ID
@@ -615,19 +622,41 @@ sorting-class-info object in core."
               (u:href sc-col-sorter-table column-name) sorter-func)))
 
     ;; 3. Construct linearization and store it.
-    (let* ((all-sorting-class-specs
-             (loop :for group-descriptor :in =meta/sorting-classes=
-                   :append (user-form group-descriptor)))
-           (ascs-canonizalized
-             (canonicalize-sorting-classes-for-linearization
-              all-sorting-class-specs))
-           (linearization (linearize ascs-canonizalized)))
+    (let ((all-sorting-class-specs
+            (loop :for group-descriptor :in =meta/sorting-classes=
+                  :append (user-form group-descriptor))))
 
-      (setf (linearization sorting-class-info) linearization
-            (canon-sorting-specs sorting-class-info) ascs-canonizalized)
+      ;; TODO: Run all of the rule-db/* that require the full
+      ;; all-sorting-class-specs data structure to typecheck everything.
+      (assert
+       (rule-db/no-missing-parent-declarations all-sorting-class-specs))
 
-      ;; 4. Compute optimized comparators for each pair of sorting classes.
-      (init-sc-compare-table sorting-class-info))))
+      (u:mvlet* ((ascs-canonizalized
+                  (canonicalize-sorting-classes-for-linearization
+                   all-sorting-class-specs))
+                 (linearization (linearize ascs-canonizalized)))
+
+        (setf (linearization sorting-class-info) linearization
+              (canon-sorting-specs sorting-class-info) ascs-canonizalized)
+
+        ;; 4. Compute optimized comparators for each pair of sorting classes.
+        (init-sc-compare-table sorting-class-info)))))
+
+
+;; TODO: Build data structure for comparing two instances of types.
+;; We walk down two class's arrays until there is a column mismatch or the
+;; values of the columns indicated in matching ones are differnent.
+;; NOTE: Be careful with EQ comparison.
+
+;; Sbase-> #((p . 1) (i . 0))
+;; Foo  -> #((z . 6) (p . 1) (i . 0))
+;; Bar  -> #((a . 7) (z . 6) (b . 5) (c . 4) (p . 1) (i . 0))
+;; Feh  -> #((r . 11) (s . 10) (t . 9) (z . 6) (l . 2) (p . 1) (i . 0))
+;; Meh  -> #((r . 11) (s . 10) (t . 9) (h . 8) (z . 6) (l . 2) (p . 1) (i . 0))
+;; Qux  -> etc
+
+
+
 
 
 ;; How to compare two sorting class instances.
@@ -708,7 +737,7 @@ sorting-class-info object in core."
 
 ;; When assigning comaprator functions, if 'sym-< is not defined, then set it
 ;; to #'< and assume integers. Otherwse, use fdefinition of the sym-< symbol.
-(define-component render (sort/render-layer) ())
+;; (define-component render (sort/render-layer) ())
 
 
 ;; Additional content related to C-c C-c and C-c C-k and duplicate forms of

@@ -1,3 +1,22 @@
+;; Todo next component stream:
+
+;; 1. Write the rest of the rule-db/* functions and spread them around into the
+;; defmacro for the individual sorting-class form checks and into the
+;; engine init code path for the ones that require ALL of the definition
+;; groups.
+;;
+;; 2. Write prove tests for the above.
+;;
+;; 3. Still punting on C-c C-c recompilation functionality for
+;;     define-sorting-class.
+;;
+;; 4. Work has to be done to recompile any class (larger feature than just
+;;    component flow).
+
+;; ----------------------------
+
+
+
 ;;(in-package #:attempt-1)
 
 
@@ -616,6 +635,20 @@
 ;; sorting-class Feh (SBase)    ->       R S T             L p i
 ;; sorting-class Meh (Feh Foo)  ->       R S T H   Z       L p i
 ;; sorting-class Qux (Foo)      ->   D E           Z     F   p i
+
+;; data structure for comparing two instances of types.
+;; We walk down two class's arrays until there is a column mismatch or the
+;; values of the columns indicated in matching ones are differnent.
+;; NOTE: Be careful with EQ comparison.
+
+;; Sbase-> #((p . 1) (i . 0))
+;; Foo  -> #((z . 6) (p . 1) (i . 0))
+;; Bar  -> #((a . 7) (z . 6) (b . 5) (c . 4) (p . 1) (i . 0))
+;; Feh  -> #((r . 11) (s . 10) (t . 9) (z . 6) (l . 2) (p . 1) (i . 0))
+;; Meh  -> #((r . 11) (s . 10) (t . 9) (h . 8) (z . 6) (l . 2) (p . 1) (i . 0))
+;; Qux  -> etc
+
+
 
 ;; (sorting-class-name (columns))
 

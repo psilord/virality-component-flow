@@ -23,7 +23,7 @@
                         z
                         (b :sorter < :default 0)
                         (c :sorter > :default 0)))
-  (sort/my-render-layer (v:sort/render-layer) ((zzz :sorter < :default 0))))
+  (sort/my-render-layer () ((zzz :sorter < :default 0))))
 
 
 ;; example comonent using sorting classes.
