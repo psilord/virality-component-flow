@@ -12,6 +12,11 @@
 ;;
 ;; 4. Work has to be done to recompile any class (larger feature than just
 ;;    component flow).
+;;
+;; 5. Continue construction of the sorting class comparator table and
+;;    functionality.
+
+
 
 ;; ----------------------------
 
