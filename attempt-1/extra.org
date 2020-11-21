@@ -8,13 +8,17 @@
 ;; 2. Write prove tests for the above.
 ;;
 ;; 3. Still punting on C-c C-c recompilation functionality for
-;;     define-sorting-class.
+;;     define-sorting-class. Have to do both: type checking of the change
+;;     to ensure the user asked for a valid change, deal with putting the
+;;     recompilation into a thread safe queue.
 ;;
-;; 4. Work has to be done to recompile any class (larger feature than just
-;;    component flow).
+;; 4. Work has to be done to recompile ANY class (CLOS and structures)
+;;    (larger feature than just component flow).
 ;;
 ;; 5. Continue construction of the sorting class comparator table and
 ;;    functionality.
+
+;; 6+ Prototype define-component that emits a defstruct instead of a class.
 
 
 
