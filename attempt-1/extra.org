@@ -21,6 +21,7 @@
 ;; 6+ Prototype define-component that emits a defstruct instead of a class.
 https://gist.github.com/mfiano/954465b10799a43d09c6504b932157db
 https://gist.github.com/mfiano/27bceacb2e34615bed70048df8ab6fba
+https://gist.github.com/mfiano/e09ee30f2f5fd14c9f7e866a5ef9539b
 
 
 ;; ----------------------------
