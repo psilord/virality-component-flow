@@ -198,7 +198,6 @@ then print out the result of which form failed."
               (a1::rule-db/sorting-classes-syntactically-well-formed raw-db)
               (a1::rule-db/validate-parent-count raw-db))
       (return-from sorting-class/random/single-lin nil))
-
     (let* (
            (linearization (a1::linearize db)))
 

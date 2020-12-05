@@ -7,6 +7,7 @@
   :version "0.0.1"
   :serial t
   :depends-on (#:alexandria
+	       #:cl-digraph
                #:queues
                #:printv
                #:global-vars

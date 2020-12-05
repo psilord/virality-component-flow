@@ -197,8 +197,12 @@
 ;;;; Rules to typecheck an individual sorting class form:
 ;;;;
 
-;; [x] rule-db/sorting-classes-syntactically-well-formed [raw-db as a whole]
-;; [x] rule-db/sorting-class-syntactically-well-formed [individual sc form]
+;; . - test written
+;; / - unit test written
+;; x - actually in the code flow in the proper place.
+
+;; [/] rule-db/sorting-classes-syntactically-well-formed [raw-db as a whole]
+;; [/] rule-db/sorting-class-syntactically-well-formed [individual sc form]
 ;;     <acts upon a single sorting-class form>
 ;; Each sorting class must have a
 ;;  name: a single symbol
@@ -212,29 +216,34 @@
 ;;        lead to confusion. We (the devs) can optimize looking up the function
 ;;        ourselves at the end of a frame if we need to speed it up, etc.
 
-;; [x] rule-db/validate-parent-count
+;; [/] rule-db/validate-parent-count
 ;;     The parents for a sorting class that is not sort/base cannot be nil.
 ;;     The parents for sort/base must be nil.
 
-;; [x] rule-db/sort-class-may-not-be-its-own-parent
+;; [/] rule-db/sort-class-may-not-be-its-own-parent
 ;;     A sorting class cannot be its own parent in a sorting class form
 
-;; [ ] rule-db/no-duplicate-parents
+;; [.] rule-db/no-duplicate-parents
 ;;     Each of the sorting class parents must be unique in the parent list.
-;;     No NIL/T, or keywords, in the parents list.
 
-;; [ ] rule-db/sorting-class-columns-unique
+;; [.] rule-db/no-duplicate-sorting-columns
 ;;     Each sorting class definition can only have a set of symbols for its
 ;;     columns references or definitions that are all distinct symbols.
 
 ;;;;
 ;;;; Rules to typecheck an individual sorting class form wrt the entire
-;;;; currently known set of sorting-classes:
+;;;; currently known set of sorting-classes. Many of these need to run at
+;;;; RUNTIME though some may be able to be used at macro expansion time.
 ;;;;
 
-;; [ ] rule-db/no-missing-parent-declarations
+;; [ ] rule-db/no-inheritance-cycles
+;;     Given the inheritance graph, there cannot be any cycles.
+
+;; [.] rule-db/no-missing-parent-declarations
 ;;     A raw-db sorting-class cannot use a parent sorting-class which
 ;;     doesn't exist in the whole of the metadata.
+;;     Since we're checking the entire DB at runtime, it should be fully
+;;     completed by then.
 
 ;; [ ] rule-db/column-definitions-and-references-well-formed
 ;;     When a column is first defined in a sorting class hierarchy, it REQUIRES
@@ -248,7 +257,7 @@
 ;;     Ensure that all columns in a particular raw-db came from either itself,
 ;;     or its direct(s) parent in the hierarchy.
 
-;; [ ] rule-db/sorting-class-name-unique
+;; [.] rule-db/sorting-class-name-unique
 ;;     If two sorting classes are defined, their sorting class names must be
 ;;     distinct symbols.
 
@@ -257,6 +266,127 @@
 ;;     order in all classes that used those columns.
 
 ;; ------------------------------
+
+(defun junk()
+  '((sort/base () ((z1 :comparator '< :default nil)
+                   (z0 :comparator '< :default -1)))
+    (foo (sort/base) ((a :comparator '< :default 0)
+                      (b :comparator '< :default 0)
+                      z1
+                      z0))
+    (bar (sort/base) ((c :comparator '< :default 0)
+                      (d :comparator '< :default 0)
+                      z1
+                      z0))
+    (qux (foo bar) (a
+                    (e :comparator '< :default 0)
+                    b
+                    c
+                    (f :comparator '< :default 0)
+                    d
+                    z1
+                    z0))
+    (feh (bar qux foo) (a
+                        e
+                        b
+                        (g :comparator '< :default 0)
+                        c
+                        f
+                        d
+                        (h :comparator '< :default 0)
+                        z1
+                        z0))))
+
+;; Removal of extraneous ancestors of two nodes in a DAG requires a
+;; least common ancestor algorithm. Finding them is done like this:
+;; https://en.wikipedia.org/wiki/Tarjan%27s_off-line_lowest_common_ancestors_algorithm
+
+;; sort/base -> nil
+;; foo -> sort/base
+;; bar -> sort/base
+;; qux -> (foo bar)
+;; feh -> (qux foo)
+
+;; qux POT-LEAF
+;; foo POT-LEAF
+
+;; from feh:
+;; (bar sort/base nil)
+;; qux -> foo -> sort/base -> nil
+;; qux -> bar -> sort/base -> nil
+;; foo -> sort/base -> nil
+
+(defun rule-db/sorting-class-name-unique (raw-db)
+  (let ((tbl (u:dict #'eq))
+        (duplicates nil))
+    (process-sorting-classes
+     (lambda (sc parents cols)
+       (declare (ignore parents cols))
+       (if (u:href tbl sc)
+           (incf (u:href tbl sc))
+           (setf (u:href tbl sc) 1)))
+     raw-db)
+
+    (u:do-hash (sc-name refcount tbl)
+      (when (> refcount 1)
+        (pushnew sc-name duplicates :test #'eq)))
+
+    (when duplicates
+      (error "A sorting class name may not be defined more than once.~%~%~
+Duplicate sorting classes: ~A"
+             duplicates)))
+  t)
+
+(defun doit10 () ;; rule-db/sorting-class-name-unique
+  (let ((raw-db
+          '((foo (hhh) (a b c))
+            (fro () (d e f))
+            (qux (foo) (a b c g))
+            (hhh (bar) (d e f h))
+            (fro (foo bar) (a b c d e f p o l))
+            (fro (qux) (a b c g k))
+            (hhh () (z x y)))))
+    (rule-db/sorting-class-name-unique raw-db)))
+
+;; definition 1
+(defun rule-db/no-missing-parent-declarations (raw-db)
+  (let ((sc-tbl (u:dict #'eq))
+        (missing-tbl (u:dict #'eq)))
+
+    (process-sorting-classes
+     (lambda (sc parents cols)
+       (declare (ignore parents cols))
+       (setf (u:href sc-tbl sc) sc))
+     raw-db)
+
+    (process-sorting-classes
+     (lambda (sc parents cols)
+       (declare (ignore cols))
+       (dolist (parent parents)
+         (unless (u:href sc-tbl parent)
+           (pushnew parent (u:href missing-tbl sc) :test #'eq))))
+     raw-db)
+
+    (let ((collected-problems nil))
+      (u:do-hash (sorting-class missing-parents missing-tbl)
+        (push (list sorting-class missing-parents) collected-problems))
+      (error "Some sorting classes have missing parents:~%~{ ~A~^~%~}"
+             collected-problems))
+
+    t))
+
+
+
+
+(defun doit9 () ;; rule-db/no-missing-parent-declarations
+  (let ((raw-db
+          '((foo (hhh) (a b c)) ;; example of forward declare being ok.
+            (bar () (d e f))
+            (qux (foo) (a b c g))
+            (feh (bar) (d e f h))
+            (fro (foo bar) (a b c d e f p o l))
+            (hhh () (z x y)))))
+    (rule-db/no-missing-parent-declarations raw-db)))
 
 
 
@@ -346,20 +476,49 @@ is not :common-lisp or :keyword."
    raw-db)
   t)
 
-
 ;; TODO: Put into prove.
-(defun rule-db/no-missing-parent-declarations (raw-db)
-  (let ((known-classes (u:dict #'eq)))
-    ;; Collect all sorting-class names
-    (loop :for (sc-name parents . colnames) :in raw-db
-          :do (setf (u:href known-classes sc-name) t))
-    ;; Then check that each parents is a member of the known names.
-    (loop :for (sc-name parents . colnames) :in raw-db
-	  :do (dolist (parent parents)
-		(u:unless-found (parent-class (u:href known-classes parent))
-		  (error "Parental sorting-class ~A has not been defined."
-			 parent))))
-    t))
+(defun rule-db/no-duplicate-parents (sc parents cols)
+  (declare (ignore cols))
+  (let ((tbl (u:dict #'eq))
+        (duplicates nil))
+    (dolist (parent parents)
+      (if (u:href tbl parent)
+          (incf (u:href tbl parent))
+          (setf (u:href tbl parent) 1)))
+    (dolist (parent parents)
+      (let ((reference-count (u:href tbl parent)))
+        (when (> reference-count 1)
+          (pushnew parent duplicates :test #'eq))))
+    (when duplicates
+      (error "Sorting class ~A may not have duplicate parents.~%~%~
+              Parents: ~A.~%~
+              Duplicate parents: ~A"
+             sc parents (reverse duplicates))))
+  t)
+
+;; NOTE: Assumes canonicalized sorting-class form.
+(defun rule-db/no-duplicate-sorting-columns (sc parents cols)
+  (declare (ignore parents))
+  (let ((tbl (u:dict #'eq))
+        (duplicates nil))
+    (dolist (col cols)
+      (if (u:href tbl col)
+          (incf (u:href tbl col))
+          (setf (u:href tbl col) 1)))
+    (dolist (col cols)
+      (let ((reference-count (u:href tbl col)))
+        (when (> reference-count 1)
+          (pushnew col duplicates :test #'eq))))
+    (when duplicates
+      (error "Sorting class ~A may not have duplicate cols.~%~%~
+              Cols: ~A.~%~
+              Duplicate cols: ~A"
+             sc cols (reverse duplicates))))
+  t)
+
+
+
+
 
 
 
@@ -434,9 +593,20 @@ Return the sorting-class with the sorter functions and defaults removed."
                 cols)))
 
 (defun canonicalize-sorting-classes-for-linearization (raw-db)
+  "Take in a raw-db and remove all comparators and defaults from the sorting
+columns. This makes it appropriate for the linearization algorithm."
   (process-sorting-classes
    #'canonicalize-sorting-class-for-linearization
    raw-db))
+
+
+;; TODO
+(defun canonicalize-sorting-classes (raw-db)
+  "Take a RAW-DB and remove all parents from each sorting class that are
+ancestors but not direct parents."
+  (declare (ignore raw-db))
+  nil)
+
 
 
 (defun append-internal-sorting-columns (body)
@@ -643,6 +813,7 @@ sorting-class-info object in core."
         (init-sc-compare-table sorting-class-info)))))
 
 
+
 ;; TODO: Build data structure for comparing two instances of types.
 ;; We walk down two class's arrays until there is a column mismatch or the
 ;; values of the columns indicated in matching ones are differnent.
@@ -675,21 +846,21 @@ sorting-class-info object in core."
 
 ;;;; linearization validation pass:
 
-;; [x] rule-lin/no-duplicated-columns
+;; [.] rule-lin/no-duplicated-columns
 ;;     No duplicated column names in linearization.
 
-;; [x] rule-lin/no-duplicated-indices
+;; [.] rule-lin/no-duplicated-indices
 ;;     No duplicated column indices in linearization.
 
-;; [x] rule-lin/only-valid-columns-exist
+;; [.] rule-lin/only-valid-columns-exist
 ;;     All columns in each sorting-class must exist in the final ordering.
 ;;     No extra columns, no missing columns.
 
-;; [x] rule-lin/sorting-class-column-order-preserved
+;; [.] rule-lin/sorting-class-column-order-preserved
 ;;     The order of each sorting-class column must be preserved in the
 ;;     linearization.
 
-;; [x] rule-lin/no-index-holes-start-from-zero
+;; [.] rule-lin/no-index-holes-start-from-zero
 ;;     No holes in the integer indexing starting from 0 to max column number.
 
 ;;;; linearization type rules.

@@ -10,7 +10,8 @@
                #:prove)
   :defsystem-depends-on (#:prove-asdf)
   :pathname "test"
-  :perform (asdf:test-op (op c) (funcall (intern "RUN" '#:prove) c))
+  :perform (asdf:test-op (op c)
+			 (uiop:symbol-call '#:attempt-1.test '#:run-tests c))
   :components (
                (:file "package")
 	       (:file "engine-tests")
