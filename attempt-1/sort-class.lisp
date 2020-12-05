@@ -88,14 +88,12 @@
 
 (defun linearize (db)
   (let ((db (copy-tree db))
-        (total-columns 0)
         (shash (u:dict #'eq)))
     ;; 1. Compute total number of columns & column frequency(?)
     (loop :for (sc cols) :in db
           :do (loop :for col :in cols
                     :do (u:ensure-gethash col shash 0)
                         (incf (u:href shash col))))
-    (setf total-columns (hash-table-count shash))
 
     ;; 2. Sort sorting class by 1) number of columns, then 2) by symbol name,
     ;;    3) package name
