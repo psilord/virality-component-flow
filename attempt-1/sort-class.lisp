@@ -368,12 +368,10 @@ Duplicate sorting classes: ~A"
     (let ((collected-problems nil))
       (u:do-hash (sorting-class missing-parents missing-tbl)
         (push (list sorting-class missing-parents) collected-problems))
-      (error "Some sorting classes have missing parents:~%~{ ~A~^~%~}"
-             collected-problems))
-
+      (when collected-problems
+        (error "Some sorting classes have missing parents:~%~{ ~A~^~%~}"
+               collected-problems)))
     t))
-
-
 
 
 (defun doit9 () ;; rule-db/no-missing-parent-declarations
@@ -383,6 +381,8 @@ Duplicate sorting classes: ~A"
             (qux (foo) (a b c g))
             (feh (bar) (d e f h))
             (fro (foo bar) (a b c d e f p o l))
+            (ggg (lll ppp) (p p p))
+            (iii (mmm fro) (p p p))
             (hhh () (z x y)))))
     (rule-db/no-missing-parent-declarations raw-db)))
 
