@@ -5,6 +5,10 @@
 ;; engine init code path for the ones that require ALL of the definition
 ;; groups.
 ;;
+;; 1b. Create official DAG representation for the sorting class inheritance.
+;;
+;; 1c. Write canonicalize-sorting-classes
+;;
 ;; 2. Write prove tests for the above.
 ;;
 ;; 3. Still punting on C-c C-c recompilation functionality for
@@ -784,26 +788,26 @@ https://gist.github.com/mfiano/e09ee30f2f5fd14c9f7e866a5ef9539b
 #|
 (defclass sort/foo (v:sort/base) ())
 (defmethod initialize-instance :after ((instance sort/foo)
-                                       &rest initargs
-                                         ;; key options unused.
-                                       &key (z nil z-supplied-p))
-  (when z-supplied-p
-    (setf (column-values instance 'z) z)))
+&rest initargs
+;; key options unused.
+&key (z nil z-supplied-p))
+(when z-supplied-p
+(setf (column-values instance 'z) z)))
 
 (defclass sort/qux (sort/foo) ())
 (defmethod initialize-instance :after ((instance sort/qux)
-                                       &rest initargs
-                                         ;; key options unused.
-                                       &key
-                                         (d nil d-supplied-p)
-                                         (e nil e-supplied-p)
-                                         (f nil f-supplied-p))
-  (when d-supplied-p
-    (setf (column-values instance 'd) d))
-  (when e-supplied-p
-    (setf (column-values instance 'e) e))
-  (when f-supplied-p
-    (setf (column-values instance 'f) f)))
+&rest initargs
+;; key options unused.
+&key
+(d nil d-supplied-p)
+(e nil e-supplied-p)
+(f nil f-supplied-p))
+(when d-supplied-p
+(setf (column-values instance 'd) d))
+(when e-supplied-p
+(setf (column-values instance 'e) e))
+(when f-supplied-p
+(setf (column-values instance 'f) f)))
 
 ;; do initialize-instance for each one.
 

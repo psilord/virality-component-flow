@@ -598,7 +598,9 @@ columns. This makes it appropriate for the linearization algorithm."
    raw-db))
 
 
-;; TODO
+;; TODO: The raw-db from the user may include ancestors in addition to
+;; direct parents for each sorting class. This function removes those
+;; unneeded anestors from the parents of each sorting class.
 (defun canonicalize-sorting-classes (raw-db)
   "Take a RAW-DB and remove all parents from each sorting class that are
 ancestors but not direct parents."
