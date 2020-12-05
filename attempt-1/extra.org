@@ -1,13 +1,13 @@
 ;; Todo next component stream:
 
-;; 1. Write the rest of the rule-db/* functions and spread them around into the
+;; 1. Create official DAG representation for the sorting class inheritance.
+;;
+;; 1b. Write canonicalize-sorting-classes
+;;
+;; 1c. Write the rest of the rule-db/* functions and spread them around into the
 ;; defmacro for the individual sorting-class form checks and into the
 ;; engine init code path for the ones that require ALL of the definition
 ;; groups.
-;;
-;; 1b. Create official DAG representation for the sorting class inheritance.
-;;
-;; 1c. Write canonicalize-sorting-classes
 ;;
 ;; 2. Write prove tests for the above.
 ;;
