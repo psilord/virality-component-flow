@@ -381,8 +381,8 @@ Duplicate sorting classes: ~A"
             (qux (foo) (a b c g))
             (feh (bar) (d e f h))
             (fro (foo bar) (a b c d e f p o l))
-            (ggg (lll ppp) (p p p))
-            (iii (mmm fro) (p p p))
+            (ggg (lll ppp) (p p p)) ;; missing parents
+            (iii (mmm fro) (p p p)) ;; missing parents
             (hhh () (z x y)))))
     (rule-db/no-missing-parent-declarations raw-db)))
 
