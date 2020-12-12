@@ -227,17 +227,34 @@ then print out the result of which form failed."
                  (+ 5 (random 5)) (+ 10 (random 10)))))
 
 
-
 (defun sorting-class/rule-db ()
-  (let* ((raw-db '((v::sort/base () (p i))
-                   (foo (v::sort/base) (z p i))
-                   (qux (foo) (d e z f p i))
-                   (feh (v::sort/base) (r s k l p i))
-                   (meh (feh foo) (r s k h z l p i))
-                   (bar (foo) (a z b c p i)))))
+  (let* ((raw-db '((v::sort/base () ((p :comparator < :default 0)
+                                     (i :comparator < :default 0)))
+
+                   (foo (v::sort/base) ((z :comparator < :default 0)
+                                        p
+                                        i))
+
+                   (bar (v::sort/base) ((a :comparator < :default 0)
+                                        p
+                                        i))
+
+                   (qux (foo bar) (z
+                                   a
+                                   (f :comparator > :default 0)
+                                   p
+                                   i)))))
 
     (assert-validity-rules raw-db
       (a1::rule-db/sorting-classes-syntactically-well-formed raw-db)
       (a1::rule-db/validate-parent-count raw-db)
       (a1::rule-db/sort-class-may-not-be-its-own-parent raw-db)
-      #++(a1::rule-db/no-forward-parent-declarations raw-db))))
+      (a1::rule-db/no-missing-parent-declarations raw-db))
+
+    ;; Now we can build the graph properly.
+    (let ((graph (a1::make-inheritance-graph raw-db)))
+      ;; These next ones use the graph code
+      (assert-validity-rules raw-db
+        (a1::rule-db/no-inheritance-cycles graph)
+        (a1::rule-db/sort/base-is-the-only-root graph)
+        (a1::rule-db/valid-column-inheritance graph)))))

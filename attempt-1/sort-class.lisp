@@ -234,66 +234,182 @@
 ;;;; RUNTIME though some may be able to be used at macro expansion time.
 ;;;;
 
-;; [ ] rule-db/no-inheritance-cycles
+;; 1: [.] rule-db/no-inheritance-cycles
 ;;     Given the inheritance graph, there cannot be any cycles.
 
-;; [.] rule-db/no-missing-parent-declarations
+;; 2: [.] rule-db/sort/base-is-the-only-root
+;;     Given the inheritance graph, there must be one root that is SORT/BASE.
+
+;; 3: [.] rule-db/no-missing-parent-declarations
 ;;     A raw-db sorting-class cannot use a parent sorting-class which
 ;;     doesn't exist in the whole of the metadata.
 ;;     Since we're checking the entire DB at runtime, it should be fully
 ;;     completed by then.
 
-;; [ ] rule-db/column-definitions-and-references-well-formed
-;;     When a column is first defined in a sorting class hierarchy, it REQUIRES
-;;     a comparator function and default to be paired with it. It can only be
-;;     defined once.
-;;
-;;     When a column previously defined in the sorting hierarchy is referenced,
-;;     it MUST NOT supply a comparator function or default.
-
-;; [ ] rule-db/valid-column-inheritance
-;;     Ensure that all columns in a particular raw-db came from either itself,
-;;     or its direct(s) parent in the hierarchy.
-
-;; [.] rule-db/sorting-class-name-unique
+;; 4: [.] rule-db/sorting-class-name-unique
 ;;     If two sorting classes are defined, their sorting class names must be
 ;;     distinct symbols.
 
-;; [ ] rule-db/all-column-pairs-preserve-order
+;; 5: [.] rule-db/valid-column-inheritance
+;;    a: Ensure that each sorting class references ALL sorting-columns from its
+;;       direct parents. New sorting-columns for this sorting-class
+;;       MUST be DECLARED (with comparator/default) for this class.
+;;
+;;    b: Each sorting column must be declared exactly once.
+;;
+;;    This next one is implied by a+b.
+;;    c: When a column previously declared in the sorting hierarchy is
+;;       referenced, it MUST NOT supply a comparator function or default.
+
+;; 6: [ ] rule-db/all-column-pairs-preserve-order
 ;;     All pairs of columns for each sorting-class must preserve their
 ;;     order in all classes that used those columns.
 
-;; ------------------------------
-
-(defun junk()
-  '((sort/base () ((z1 :comparator '< :default nil)
-                   (z0 :comparator '< :default -1)))
-    (foo (sort/base) ((a :comparator '< :default 0)
-                      (b :comparator '< :default 0)
+(defun junk ()
+  '((sort/base () ((z1 :comparator < :default 0)
+                   (z0 :comparator < :default 0)))
+    (foo (sort/base) ((a :comparator < :default 0)
                       z1
                       z0))
-    (bar (sort/base) ((c :comparator '< :default 0)
-                      (d :comparator '< :default 0)
+    (bar (sort/base) (a
                       z1
                       z0))
     (qux (foo bar) (a
-                    (e :comparator '< :default 0)
                     b
-                    c
-                    (f :comparator '< :default 0)
-                    d
+                    (c :comparator < :default 0)
                     z1
-                    z0))
-    (feh (bar qux foo) (a
-                        e
-                        b
-                        (g :comparator '< :default 0)
-                        c
-                        f
-                        d
-                        (h :comparator '< :default 0)
-                        z1
-                        z0))))
+                    z0))))
+
+(defun union-direct-parent-all-cols (graph vertex)
+  (let ((preds (digraph:predecessors graph vertex)))
+    (when preds
+      (reduce #'union (mapcar #'all-cols preds)))))
+
+(defun set-equivalence-p (list1 list2 &key (key #'identity)
+                                        (test #'eql))
+  (not (set-exclusive-or list1 list2 :key key :test test)))
+
+(defun rule-db/valid-column-inheritance (graph)
+  (let* ((dec-tbl (u:dict #'eq))
+         ;; NOTE: The toposort isn't needed, but if we have it then we discover
+         ;; multiple errors in an order that is closer, and in the direction
+         ;; of, the base sorting-class to the leaf sorting-classes.
+         (toposort (nreverse (digraph:topological-sort graph))))
+
+    (dolist (vert toposort)
+
+      (let ((refs-ok (set-equivalence-p
+                      (ref-cols vert)
+                      (union-direct-parent-all-cols graph vert)
+                      :test #'eq)))
+        (unless refs-ok
+          (error "Sorting class ~A: sorting column references are ~
+mismatched with direct parents. Write better error later."
+                 (name vert)))
+
+        (let ((duplicates nil))
+          (dolist (dec-col (dec-cols vert))
+            (let ((dec-name (car dec-col)))
+              (if (u:href dec-tbl dec-name)
+                  (pushnew dec-name duplicates :test #'eq)
+                  (setf (u:href dec-tbl dec-name) t))))
+
+          (when duplicates
+            (error "Sorting class ~A: Cannot declare a sorting column ~
+(with another sorting class or itself) more than once:~%~
+Duplicates: ~A. Write better error later."
+                   (name vert)
+                   duplicates))))))
+
+  t)
+
+;; Used at RUNTIME to construct the full inheritance graph of the raw-db.
+
+(defclass sc-vertex ()
+  ((%name :accessor name ;; a symbol
+          :initarg :name
+          :initform nil)
+   (%ref-cols :accessor ref-cols ;; just the name of the cols
+              :initarg :ref-cols
+              :initform nil)
+   (%dec-cols :accessor dec-cols ;; list of (name (comparator default))
+              :initarg :dec-cols
+              :initform nil)
+   (%all-cols :accessor all-cols ;; just the names of the cols in the sc
+              :initarg :all-cols
+              :initform nil)))
+
+
+(defun split-sc-columns (cols)
+  "Cut the columns into two values: a list of symbols of referenced columns,
+and a list of (col-name (comparator-sym default-value))."
+  (let* ((ref-cols (remove-if-not #'symbolp cols))
+         (dec-cols (mapcar
+                    (lambda (f)
+                      (destructuring-bind (name &key comparator default) f
+                        `(,name (,comparator ,default))))
+                    (remove-if #'symbolp cols)))
+         (all-cols (append ref-cols (mapcar #'first dec-cols))))
+
+    (values ref-cols dec-cols all-cols)))
+
+
+(defun make-sc-vertex (sc-name cols)
+  (u:mvlet ((ref-cols dec-cols all-cols (split-sc-columns cols)))
+    (make-instance 'sc-vertex
+                   :name sc-name
+                   :ref-cols ref-cols
+                   :dec-cols dec-cols
+                   :all-cols all-cols)))
+
+
+(defun make-inheritance-graph (raw-db)
+  (let ((graph (digraph:make-digraph :test #'eq))
+        ;; hash: sc-name -> sc-vertex
+        (sc->vert (u:dict #'eq)))
+
+    ;; First pass, build vertices.
+    (process-sorting-classes
+     (lambda (sc parents cols)
+       (declare (ignore parents))
+       ;; Ensure sorting class is present.
+       (let ((vert (make-sc-vertex sc cols)))
+         (setf (u:href sc->vert sc) vert)
+         (digraph:insert-vertex graph vert)))
+     raw-db)
+
+    ;; Then, add inheritance edges.
+    (process-sorting-classes
+     (lambda (sc parents cols)
+       (declare (ignore cols))
+       ;; build edges from parents to sorting class.
+       (dolist (parent parents)
+         (digraph:insert-edge graph
+                              (u:href sc->vert parent)
+                              (u:href sc->vert sc))))
+     raw-db)
+
+    ;; return the graph and the start vertex (that we expect)
+    (values graph (u:href sc->vert 'sort/base))))
+
+(defun rule-db/no-inheritance-cycles (graph)
+  ;; Check for cycles.
+  ;; TODO: Handle better later if there is an error.
+  (digraph:topological-sort graph)
+  t)
+
+(defun rule-db/sort/base-is-the-only-root (graph)
+  ;; This test assumes no cycles.
+  ;; Then if there is only one root and it is what we expect, then there cannot
+  ;; be disjoint sub-graphs in the whole of the inheritance structure.
+  (let ((roots (digraph:roots graph)))
+    (when (/= (length roots) 1)
+      (error "The sorting class inheritance graph can have only one root, ~
+but found roots: ~A" roots))
+    (unless (eq (name (car roots)) 'sort/base)
+      (error "The sorting class inheritance graph root must be SORT/BASE, ~
+not ~A" (car roots))))
+  t)
 
 ;; Removal of extraneous ancestors of two nodes in a DAG requires a
 ;; least common ancestor algorithm. Finding them is done like this:
@@ -434,16 +550,27 @@ is not :common-lisp or :keyword."
        (unless (valid-sorting-class-token col)
          (error "spec col is not a proper symbol.")))
       ((consp col)
-       (destructuring-bind (&optional col-name . comparator) col
+       ;; TODO: This destrucuring-bind needs more complexity to handle bad
+       ;; forms so we can signal an exception vs the compiler doing it on
+       ;; the d-b form failure.
+       (destructuring-bind (col-name &key (comparator nil c-supp-p)
+                                       (default nil d-supp-p))
+           col
+         (declare (ignore default))
          (unless (valid-sorting-class-token col-name)
            (error "spec col name in compound form is wrong."))
-         (cond
-           ((= (length comparator) 1)
-            (unless (valid-sorting-class-token (first comparator))
-              (error "spec col comparator is invalid."))
-            t)
-           (t
-            (error "spec col compound form is invalid.")))))))
+
+         (unless c-supp-p
+           (error "spec col declaration must have a comparator!"))
+
+         (unless (and comparator (symbolp comparator))
+           (error "spec col declaration must have a non nil comparator!"))
+
+         (unless d-supp-p
+           (error "spec col declaration must have a default!"))))
+
+      (t
+       (error "spec col compound form is invalid."))))
   t)
 
 (defun rule-db/sorting-classes-syntactically-well-formed (raw-db)
@@ -530,24 +657,6 @@ KEY -> VALUE in =meta/sorting-classes= hash table.
 known-sorting-classes -> HASH_TABLE[Key: sorting-class-sym, Value: T]
 
 |#
-
-;; don't use
-(defun insert-known-sorting-class (sorting-class-name)
-  (symbol-macrolet ((known-classes
-                      (u:href =meta/sorting-classes= 'known-sorting-classes)))
-    (u:unless-found (table known-classes)
-      (setf known-classes (u:dict #'eq)))
-
-    (setf (u:href known-classes sorting-class-name) t)))
-
-;; don't use
-(defun lookup-known-sorting-class (sorting-class-name)
-  (symbol-macrolet ((known-classes
-                      (u:href =meta/sorting-classes= 'known-sorting-classes)))
-    (u:unless-found (table known-classes)
-      (setf known-classes (u:dict #'eq)))
-
-    (u:href known-classes sorting-class-name)))
 
 ;; Representation of the meta data of a sorting class
 (u:eval-always

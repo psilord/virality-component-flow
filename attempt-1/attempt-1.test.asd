@@ -11,9 +11,9 @@
   :defsystem-depends-on (#:prove-asdf)
   :pathname "test"
   :perform (asdf:test-op (op c)
-			 (uiop:symbol-call '#:attempt-1.test '#:run-tests c))
+                         (uiop:symbol-call '#:attempt-1.test '#:run-tests c))
   :components (
                (:file "package")
-	       (:file "engine-tests")
+               (:file "engine-tests")
                (:test-file "test")
                ))

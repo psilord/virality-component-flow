@@ -7,10 +7,10 @@
   :version "0.0.1"
   :serial t
   :depends-on (#:alexandria
-	       #:cl-digraph
                #:queues
                #:printv
                #:global-vars
+	       #:cl-digraph
                #:net.mfiano.lisp.golden-utils
                #:net.mfiano.lisp.algae)
   :in-order-to ((asdf:test-op (asdf:test-op #:attempt-1.test)))
