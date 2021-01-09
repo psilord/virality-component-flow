@@ -195,8 +195,8 @@
 ;;;; Rules to typecheck an individual sorting class form:
 ;;;;
 
-;; . - test written
-;; / - unit test written
+;; . - rule test written
+;; / - unit test for the rule written
 ;; x - actually in the code flow in the proper place.
 
 ;; [/] rule-db/sorting-classes-syntactically-well-formed [raw-db as a whole]
@@ -261,24 +261,50 @@
 ;;    c: When a column previously declared in the sorting hierarchy is
 ;;       referenced, it MUST NOT supply a comparator function or default.
 
-;; 6: [ ] rule-db/all-column-pairs-preserve-order
+;; 6: [.] rule-db/all-column-pairs-preserve-order
 ;;     All pairs of columns for each sorting-class must preserve their
 ;;     order in all classes that used those columns.
+
+(defun rule-db/all-column-pairs-preserve-order (graph start-vertex)
+  (let ((order (u:dict #'equalp)))
+    ;; TODO: Collect the errors found for the entire graph, then print out
+    ;; everything (like in other rule-db/* tests.
+    (flet ((add (sc a b)
+             (format t " add ~S ~S~%" a b)
+             (when  (u:href order (list b a))
+               ;; TODO: This message is good enough for immediate needs.
+               ;; But, we should datamine out a better error message.
+               (error "Sorting Class ~A: Two column pairs are in a reversed order:~% Column ~A is inconsistent with column ~A given other uses of ~A and ~A~% as found in: ~A."
+                      (name sc) a b a b (reverse (u:href order (list b a)))))
+             (push (name sc) (u:href order (list a b)))))
+      (digraph:mapc-breadth-first
+       (lambda (sc)
+         (format t "Processing vertex: ~A~%" (name sc))
+         (loop :for (a . rest) :on (all-cols sc)
+               :do (loop :for b :in rest
+                         :when b
+                           :do (add sc a b))))
+       graph
+       start-vertex)))
+  t)
+
 
 (defun junk ()
   '((sort/base () ((z1 :comparator < :default 0)
                    (z0 :comparator < :default 0)))
+
     (foo (sort/base) ((a :comparator < :default 0)
                       z1
                       z0))
-    (bar (sort/base) (a
+
+    (bar (sort/base) ((b :comparator < :default 0)
                       z1
                       z0))
-    (qux (foo bar) (a
-                    b
-                    (c :comparator < :default 0)
-                    z1
-                    z0))))
+
+    (feh (foo bar) (a b z1 z0))
+    (qux (foo bar) (b a z1 z0))
+
+    ))
 
 (defun union-direct-parent-all-cols (graph vertex)
   (let ((preds (digraph:predecessors graph vertex)))
@@ -329,27 +355,42 @@ Duplicates: ~A. Write better error later."
   ((%name :accessor name ;; a symbol
           :initarg :name
           :initform nil)
+   ;; References cols
    (%ref-cols :accessor ref-cols ;; just the name of the cols
               :initarg :ref-cols
               :initform nil)
+   ;; Columns that are declared in this sorting-class
    (%dec-cols :accessor dec-cols ;; list of (name (comparator default))
               :initarg :dec-cols
               :initform nil)
+   ;; All columns names used declared or referenced.
    (%all-cols :accessor all-cols ;; just the names of the cols in the sc
               :initarg :all-cols
               :initform nil)))
 
+(u:define-printer (sc-vertex strm)
+  (let ((*print-right-margin* (* 1024 1024))
+        (*print-miser-width* (* 1024 1024))
+        (*print-length* (* 1024 1024))
+        (*print-level* nil)
+        (*print-circle* t)
+        (*print-lines* nil))
+    (format strm "~a"
+            (name sc-vertex))))
 
 (defun split-sc-columns (cols)
   "Cut the columns into two values: a list of symbols of referenced columns,
 and a list of (col-name (comparator-sym default-value))."
+  ;; NOTE: It is extremely important that this function preserve the actual
+  ;; order of the columns in the different views we make of them.
   (let* ((ref-cols (remove-if-not #'symbolp cols))
          (dec-cols (mapcar
                     (lambda (f)
                       (destructuring-bind (name &key comparator default) f
                         `(,name (,comparator ,default))))
                     (remove-if #'symbolp cols)))
-         (all-cols (append ref-cols (mapcar #'first dec-cols))))
+         (all-cols
+           (mapcar (lambda (a) (if (consp a) (car a) a)) cols)))
 
     (values ref-cols dec-cols all-cols)))
 
@@ -361,7 +402,6 @@ and a list of (col-name (comparator-sym default-value))."
                    :ref-cols ref-cols
                    :dec-cols dec-cols
                    :all-cols all-cols)))
-
 
 (defun make-inheritance-graph (raw-db)
   (let ((graph (digraph:make-digraph :test #'eq))
@@ -378,7 +418,10 @@ and a list of (col-name (comparator-sym default-value))."
          (digraph:insert-vertex graph vert)))
      raw-db)
 
-    ;; Then, add inheritance edges.
+    ;; Then, add inheritance edges. Allowing forward declaration means that
+    ;; we could add edges without full understanding of the entire inheritance
+    ;; graph. When this operation is completed THEN we have real udnerstanding
+    ;; of the whole graph.
     (process-sorting-classes
      (lambda (sc parents cols)
        (declare (ignore cols))
@@ -389,8 +432,31 @@ and a list of (col-name (comparator-sym default-value))."
                               (u:href sc->vert sc))))
      raw-db)
 
-    ;; return the graph and the start vertex (that we expect)
-    (values graph (u:href sc->vert 'sort/base))))
+    ;; Then, remove unecessary inheritance parents for the graph.
+    (let ((removed-nondirect-parents (u:dict #'eq)))
+      (digraph:mapc-vertices
+       (lambda (v)
+         (u:when-let ((parent-pairs
+                       (all-pairs (digraph:predecessors graph v))))
+           (loop :for (start target) :in parent-pairs
+                 ;; qux ((foo sort/base) (foo bar) (sort/base bar))
+                 :do (when (and (digraph:contains-edge-p graph start v)
+                                (digraph:contains-edge-p graph target v))
+                       (cond
+                         ((digraph:reachablep graph start target)
+                          (pushnew (name start)
+                                   (u:href removed-nondirect-parents (name v)))
+                          (digraph:remove-edge graph start v))
+                         ((digraph:reachablep graph target start)
+                          (pushnew (name target)
+                                   (u:href removed-nondirect-parents (name v)))
+                          (digraph:remove-edge graph target v)))))))
+       graph)
+
+      ;; return the graph and the start vertex (that we expect)
+      (values graph
+              (u:href sc->vert 'sort/base)
+              removed-nondirect-parents))))
 
 (defun rule-db/no-inheritance-cycles (graph)
   ;; Check for cycles.
@@ -712,11 +778,22 @@ columns. This makes it appropriate for the linearization algorithm."
 ;; unneeded anestors from the parents of each sorting class.
 (defun canonicalize-sorting-classes (raw-db)
   "Take a RAW-DB and remove all parents from each sorting class that are
-ancestors but not direct parents."
-  (declare (ignore raw-db))
-  nil)
+ancestors but not direct parents.
+TODO Add more stuff!"
 
+  ;; TODO: This should be basically the first thing called, it needs to call
+  ;; all the appropriate rules.
 
+  (u:mvlet ((graph start removed-parents (make-inheritance-graph raw-db)))
+    (let ((cleaned-raw-db nil))
+      (process-sorting-classes
+       (lambda (sc parents cols)
+         (let ((cleaned-parents
+                 (set-difference parents (u:href removed-parents sc))))
+           (push (list sc cleaned-parents cols) cleaned-raw-db)))
+       raw-db)
+
+      (nreverse cleaned-raw-db))))
 
 (defun append-internal-sorting-columns (body)
   "Add the internal sorting columns of COMPONENT-TYPE and INSTANCE-ID
@@ -853,9 +930,10 @@ on V:sort/base."
                      (list name sorter default))))
 
 (defun all-pairs (lst)
-  (let ((result nil))
-    (u:map-combinations (lambda (x) (push x result)) lst :length 2)
-    (nreverse result)))
+  (when (and (listp lst) (cdr lst)) ;; list has two or more items in it.
+    (let ((result nil))
+      (u:map-combinations (lambda (x) (push x result)) lst :length 2)
+      result)))
 
 ;; engine init-code
 (defun init-sc-compare-table (sorting-class-info)
