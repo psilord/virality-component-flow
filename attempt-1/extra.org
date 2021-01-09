@@ -1,31 +1,33 @@
 ;; Todo next component stream:
 
-;; DONE
-;; 1. Create official DAG representation for the sorting class inheritance.
+;; + Write prove unit tests for each individual rule-db/* and rule-lin/*
 ;;
-;; DONE
-;; 1b. Write canonicalize-sorting-classes
+;; + Write prove tests for harnessed runtime raw-db pipeline.
 ;;
-;; DONE
-;; 1c. Write the rest of the rule-db/* functions and spread them around into the
-;; defmacro for the individual sorting-class form checks and into the
-;; engine init code path for the ones that require ALL of the definition
-;; groups.
+;; + Figure out the metadata of the define-sorting-class expansion. Since
+;;   we're prolly not doing defclass anymore, it should store the data
+;;   in a meta variable.
 ;;
-;; 2. Write prove tests for the above.
+;; + Determine the runtime (at engine start) processing of the sorting-class
+;;   meta variable information
 ;;
-;; 3. Still punting on C-c C-c recompilation functionality for
-;;     define-sorting-class. Have to do both: type checking of the change
-;;     to ensure the user asked for a valid change, deal with putting the
-;;     recompilation into a thread safe queue.
+;; + Continue construction of the sorting class comparator table and
+;;   functionality used in the runtime.
 ;;
-;; 4. Work has to be done to recompile ANY class (CLOS and structures)
-;;    (larger feature than just component flow).
-;;
-;; 5. Continue construction of the sorting class comparator table and
-;;    functionality.
+;; + Ensure comparisons of instances of different sorting-classes are correct.
+;;   Write prove unit tests for this.
 
-;; 6. Prototype define-component that emits a defstruct instead of a defclass.
+
+;; Horizon work tasks:
+;; + Still punting on C-c C-c recompilation functionality for
+;;   define-sorting-class. Have to do both: type checking of the change
+;;   to ensure the user asked for a valid change, deal with putting the
+;;   recompilation into a thread safe queue.
+;;
+;; + Work has to be done to recompile ANY class (CLOS and structures)
+;;   (larger feature than just component flow).
+;;
+;; + Prototype define-component that emits a defstruct instead of a defclass.
 
 
 ;; ----------------------------
