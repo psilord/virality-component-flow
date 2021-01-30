@@ -597,7 +597,6 @@ is not :common-lisp or :keyword."
 
 ;;;; Raw-db type rules.
 (defun rule-db/sorting-class-syntactically-well-formed (sc parents cols)
-  ;;(:printv sc parents cols)
   (unless (valid-sorting-class-token sc)
     (error 'sorting-class/bad-sorting-class-token :item sc))
 
