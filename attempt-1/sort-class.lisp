@@ -214,11 +214,11 @@
 ;;        lead to confusion. We (the devs) can optimize looking up the function
 ;;        ourselves at the end of a frame if we need to speed it up, etc.
 
-;; [/] rule-db/validate-parent-count
+;; [.] rule-db/validate-parent-count
 ;;     The parents for a sorting class that is not sort/base cannot be nil.
 ;;     The parents for sort/base must be nil.
 
-;; [/] rule-db/sort-class-may-not-be-its-own-parent
+;; [.] rule-db/sort-class-may-not-be-its-own-parent
 ;;     A sorting class cannot be its own parent in a sorting class form
 
 ;; [.] rule-db/no-duplicate-parents
@@ -597,49 +597,66 @@ is not :common-lisp or :keyword."
 
 ;;;; Raw-db type rules.
 (defun rule-db/sorting-class-syntactically-well-formed (sc parents cols)
+  ;;(:printv sc parents cols)
   (unless (valid-sorting-class-token sc)
-    (error "spec name is not a valid symbol"))
+    (error 'sorting-class/bad-sorting-class-token :item sc))
+
   (unless (listp parents)
-    (error "spec parents is not a cons"))
-  (unless (consp cols)
-    (error "spec columns is not a cons"))
+    (error 'sorting-class/bad-parents-form :item parents))
+
+  (unless (listp cols)
+    (error 'sorting-class/bad-columns-form :item cols))
 
   (dolist (parent parents)
-    (when (not (symbolp parent))
-      (error "spec parent is not a symbol"))
     (unless (valid-sorting-class-token parent)
-      (error "spec parent is not a valid symbol")))
+      (error 'sorting-class/bad-parent-token :item parent)))
 
   (dolist (col cols)
     (cond
       ((symbolp col)
        (unless (valid-sorting-class-token col)
-         (error "spec col is not a proper symbol.")))
+         (error 'sorting-class/bad-column-token :item col)))
+
       ((consp col)
-       ;; TODO: This destrucuring-bind needs more complexity to handle bad
-       ;; forms so we can signal an exception vs the compiler doing it on
-       ;; the d-b form failure.
-       (destructuring-bind (col-name &key (comparator nil c-supp-p)
-                                       (default nil d-supp-p))
-           col
-         (declare (ignore default))
+       (unless (u:proper-list-p col)
+	 (error 'sorting-class/bad-column-form :item col))
+
+       (let ((col-name (car col))
+	     (col-options (cdr col)))
+
+	 ;; Check the name
          (unless (valid-sorting-class-token col-name)
-           (error "spec col name in compound form is wrong."))
+           (error 'sorting-class/bad-column-token :item col-name))
 
-         (unless c-supp-p
-           (error "spec col declaration must have a comparator!"))
+	 ;; Check the options parsing and content
+	 (unless (= (length col-options) 4)
+	   (error 'sorting-class/bad-column-options-form :item col))
 
-         (unless (and comparator (symbolp comparator))
-           (error "spec col declaration must have a non nil comparator!"))
+	 (let ((seen (u:dict #'eq)))
+	   (loop :for (option value) :on col-options :by #'cddr
+		 :do (setf (u:href seen option) value))
 
-         (unless d-supp-p
-           (error "spec col declaration must have a default!"))))
+	   (let ((comparator-present (nth-value 1 (u:href seen :comparator)))
+		 (default-present (nth-value 1 (u:href seen :default))))
+
+	     (unless comparator-present
+	       (error 'sorting-class/missing-column-comparator :item col))
+
+	     (let ((comparator-value (u:href seen :comparator)))
+	       (unless (and comparator-value (symbolp comparator-value))
+		 (error 'sorting-class/bad-column-comparator-value :item col)))
+
+	     (unless default-present
+	       (error 'sorting-class/missing-column-default :item col))))))
 
       (t
-       (error "spec col compound form is invalid."))))
+       (error 'sorting-class/bad-column-token :item col))))
   t)
 
 (defun rule-db/sorting-classes-syntactically-well-formed (raw-db)
+  (unless raw-db
+    (error 'sorting-class/is-empty :item 'raw-db))
+
   (process-sorting-classes
    #'rule-db/sorting-class-syntactically-well-formed raw-db)
   t)

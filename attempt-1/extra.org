@@ -16,6 +16,19 @@
 ;;
 ;; + Ensure comparisons of instances of different sorting-classes are correct.
 ;;   Write prove unit tests for this.
+;;
+;; + Determine if define-component/define-bundles/etc expands to defclass or
+;;   defstruct.  We all believe that defstruct should be used because it is
+;;   prolly 20 times faster than defclass however it affects live
+;;   recompilation. This can be adjusted for with a ":open" & ":sealed"
+;;   designator on the define-component that indicates to the compilation
+;;   environment if the accessors are inlined or generated or other things
+;;   suitable for live recompilation. Unfortunately, the gamedev must make
+;;   choices here because high performance code is diameterically opposed to
+;;   live-coding.  Make a piece of standalone code to determine the real cost
+;;   of defclass and defstruct.
+;;
+;;  + Quack and other feathers.
 
 
 ;; Horizon work tasks:

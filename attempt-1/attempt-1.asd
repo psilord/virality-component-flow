@@ -18,6 +18,7 @@
                (:file "package") ;; Globals
                (:file "engine-stubs") ;; Low level V simulation stubs.
 
+	       (:file "conditions") ;; all define-condition forms.
                (:file "sort-class") ;; Sorting Class implementation
                (:file "attempt-1") ;; Quack implementation
 
