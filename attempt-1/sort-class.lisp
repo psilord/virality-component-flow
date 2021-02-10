@@ -618,35 +618,35 @@ is not :common-lisp or :keyword."
 
       ((consp col)
        (unless (u:proper-list-p col)
-	 (error 'sorting-class/bad-column-form :item col))
+         (error 'sorting-class/bad-column-form :item col))
 
        (let ((col-name (car col))
-	     (col-options (cdr col)))
+             (col-options (cdr col)))
 
-	 ;; Check the name
+         ;; Check the name
          (unless (valid-sorting-class-token col-name)
            (error 'sorting-class/bad-column-token :item col-name))
 
-	 ;; Check the options parsing and content
-	 (unless (= (length col-options) 4)
-	   (error 'sorting-class/bad-column-options-form :item col))
+         ;; Check the options parsing and content
+         (unless (= (length col-options) 4)
+           (error 'sorting-class/bad-column-options-form :item col))
 
-	 (let ((seen (u:dict #'eq)))
-	   (loop :for (option value) :on col-options :by #'cddr
-		 :do (setf (u:href seen option) value))
+         (let ((seen (u:dict #'eq)))
+           (loop :for (option value) :on col-options :by #'cddr
+                 :do (setf (u:href seen option) value))
 
-	   (let ((comparator-present (nth-value 1 (u:href seen :comparator)))
-		 (default-present (nth-value 1 (u:href seen :default))))
+           (let ((comparator-present (nth-value 1 (u:href seen :comparator)))
+                 (default-present (nth-value 1 (u:href seen :default))))
 
-	     (unless comparator-present
-	       (error 'sorting-class/missing-column-comparator :item col))
+             (unless comparator-present
+               (error 'sorting-class/missing-column-comparator :item col))
 
-	     (let ((comparator-value (u:href seen :comparator)))
-	       (unless (and comparator-value (symbolp comparator-value))
-		 (error 'sorting-class/bad-column-comparator-value :item col)))
+             (let ((comparator-value (u:href seen :comparator)))
+               (unless (and comparator-value (symbolp comparator-value))
+                 (error 'sorting-class/bad-column-comparator-value :item col)))
 
-	     (unless default-present
-	       (error 'sorting-class/missing-column-default :item col))))))
+             (unless default-present
+               (error 'sorting-class/missing-column-default :item col))))))
 
       (t
        (error 'sorting-class/bad-column-token :item col))))
@@ -654,7 +654,7 @@ is not :common-lisp or :keyword."
 
 (defun rule-db/sorting-classes-syntactically-well-formed (raw-db)
   (unless raw-db
-    (error 'sorting-class/is-empty :item 'raw-db))
+    (error 'sorting-class/bad-sorting-classes-form :item 'raw-db))
 
   (process-sorting-classes
    #'rule-db/sorting-class-syntactically-well-formed raw-db)

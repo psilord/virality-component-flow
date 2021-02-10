@@ -1,22 +1,36 @@
 (in-package #:attempt-1)
 
-;; Ultimately this stuff will end up in the right packages for each subsystem.
+;; Ultimately this stuff will end up in the right packages for each subsystem,
+;; and in the right files.
 
-;; Error condition hierarchy
+;;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; Engine base conditions
+;;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Error condition hierarchy root
 (define-condition engine/error (error) ())
+;; Warning condition hierarchy root
+(define-condition engine-warning (warning) ())
+
+;;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; Component Flow condition hierarchy.
+;;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-condition component-flow/error (engine/error) ())
+(define-condition component-flow-warning (engine-warning) ())
+
+;;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; Sorting Class DSL Processing condition hierarchy.
+;;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-condition sorting-class/error (component-flow/error)
   ((%item :reader item
           :initarg :item)))
 
-;; When we make warning ones that collide, add -warn before /
-(define-condition sorting-class/is-empty (sorting-class/error)
-  ()
-  (:report (lambda (c s)
-             (format s "A value is empty, but shouldn't be: ~S"
-                     (item c)))))
+
+;;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; Sorting class Syntax Error condition hierarchy root.
+;;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; a general syntax error otherwise not more specific
 ;; used when there isn't a more specific syntax error condition
@@ -24,6 +38,19 @@
   ()
   (:report (lambda (c s)
              (format s "Sorting class has a syntax error: ~S"
+                     (item c)))))
+
+;;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; Individual syntax error conditions
+;;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;; NOTE: Figure out where this should actually go or change to be.
+;; When we make warning ones that collide, add -warn before /
+(define-condition sorting-class/bad-sorting-classes-form (sorting-class/syntax)
+  ()
+  (:report (lambda (c s)
+             (format s "There are no sorting classes: ~S"
                      (item c)))))
 
 (define-condition sorting-class/bad-sorting-class-token (sorting-class/syntax)
@@ -89,7 +116,11 @@
              (format s "The sorting class column default is missing for column: ~S"
                      (item c)))))
 
-
-;; Warning condition hierarchy
-(define-condition engine-warning (warning) ())
-(define-condition component-flow-warning (engine-warning) ())
+;;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; Sorting class Type Error condition hierarchy root.
+;;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define-condition sorting-class/type (sorting-class/error)
+  ()
+  (:report (lambda (c s)
+             (format s "Sorting class has a type error: ~S"
+                     (item c)))))

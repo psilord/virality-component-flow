@@ -51,7 +51,7 @@
   (plan 17)
   (is-error (a1::rule-db/sorting-classes-syntactically-well-formed
              '())
-            'a1::sorting-class/is-empty
+            'a1::sorting-class/bad-sorting-classes-form
             "Ensure an empty raw-db is handled.")
 
   (is-error (a1::rule-db/sorting-classes-syntactically-well-formed
