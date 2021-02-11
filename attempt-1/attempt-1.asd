@@ -16,6 +16,7 @@
   :in-order-to ((asdf:test-op (asdf:test-op #:attempt-1.test)))
   :components (;; "V" engine code
                (:file "package") ;; Globals
+	       (:file "common") ;; Utilities, etc.
                (:file "engine-stubs") ;; Low level V simulation stubs.
 
 	       (:file "conditions") ;; all define-condition forms.
