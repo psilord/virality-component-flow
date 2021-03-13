@@ -1,6 +1,6 @@
 ;; Todo next component stream:
 
-;; + Write prove unit tests for each individual rule-db/* and rule-lin/*
+;; + Write prove unit tests for each individual rule-lin/*
 ;;
 ;; + Write prove tests for harnessed runtime raw-db pipeline.
 ;;
