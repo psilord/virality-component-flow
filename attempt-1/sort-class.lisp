@@ -101,14 +101,13 @@
         (u:do-hash-keys (key edge-table)
           (u:reversef (u:href edge-table key)))
 
-
         ;; 4. Mark the nodes with a column number in a depth first search of
         ;; the edge table. We stop searching when we hit a node that contains
         ;; a column number and assign a increasing number on the way out.
         ;; Also stop recursing when we find a node that is not in the table,
         ;; which means it is a root node. NOTE: There should be only ONE root
         ;; node in our sorting mixing use case. The root node should always
-        ;; be the serial-number for the sorting system.
+        ;; be the lowest column-number for the sorting system.
         (let ((col-assignment (u:dict #'eq))
               (last-assigned-col-number 0))
           (labels ((get-col-number ()
@@ -185,17 +184,14 @@
 ;;        lead to confusion. We (the devs) can optimize looking up the function
 ;;        ourselves at the end of a frame if we need to speed it up, etc.
 
-;; [.] rule-db/validate-parent-count
+;; [/] rule-db/validate-parent-count
 ;;     The parents for a sorting class that is not sort/base cannot be nil.
 ;;     The parents for sort/base must be nil.
 
-;; [.] rule-db/sort-class-may-not-be-its-own-parent
-;;     A sorting class cannot be its own parent in a sorting class form
-
-;; [.] rule-db/no-duplicate-parents
+;; [/] rule-db/no-duplicate-parents
 ;;     Each of the sorting class parents must be unique in the parent list.
 
-;; [.] rule-db/no-duplicate-sorting-columns
+;; [/] rule-db/no-duplicate-sorting-columns
 ;;     Each sorting class definition can only have a set of symbols for its
 ;;     columns references or definitions that are all distinct symbols.
 
@@ -205,23 +201,23 @@
 ;;;; RUNTIME though some may be able to be used at macro expansion time.
 ;;;;
 
-;; 1: [.] rule-db/no-inheritance-cycles
+;; 1: [/] rule-db/no-inheritance-cycles
 ;;     Given the inheritance graph, there cannot be any cycles.
 
-;; 2: [.] rule-db/sort/base-is-the-only-root
+;; 2: [/] rule-db/sort/base-is-the-only-root
 ;;     Given the inheritance graph, there must be one root that is SORT/BASE.
 
-;; 3: [.] rule-db/no-missing-parent-declarations
+;; 3: [/] rule-db/no-missing-parent-declarations
 ;;     A raw-db sorting-class cannot use a parent sorting-class which
 ;;     doesn't exist in the whole of the metadata.
 ;;     Since we're checking the entire DB at runtime, it should be fully
 ;;     completed by then.
 
-;; 4: [.] rule-db/sorting-class-name-unique
+;; 4: [/] rule-db/sorting-class-name-unique
 ;;     If two sorting classes are defined, their sorting class names must be
 ;;     distinct symbols.
 
-;; 5: [.] rule-db/valid-column-inheritance
+;; 5: [/] rule-db/valid-column-inheritance
 ;;    a: Ensure that each sorting class references ALL sorting-columns from its
 ;;       direct parents. New sorting-columns for this sorting-class
 ;;       MUST be DECLARED (with comparator/default) for this class.
@@ -232,7 +228,7 @@
 ;;    c: When a column previously declared in the sorting hierarchy is
 ;;       referenced, it MUST NOT supply a comparator function or default.
 
-;; 6: [.] rule-db/all-column-pairs-preserve-order
+;; 6: [/] rule-db/all-column-pairs-preserve-order
 ;;     All pairs of columns for each sorting-class must preserve their
 ;;     order in all classes that used those columns.
 
@@ -241,16 +237,17 @@
     ;; TODO: Collect the errors found for the entire graph, then print out
     ;; everything (like in other rule-db/* tests.
     (flet ((add (sc a b)
-             (format t " add ~S ~S~%" a b)
              (when  (u:href order (list b a))
                ;; TODO: This message is good enough for immediate needs.
                ;; But, we should datamine out a better error message.
-               (error "Sorting Class ~A: Two column pairs are in a reversed order:~% Column ~A is inconsistent with column ~A given other uses of ~A and ~A~% as found in: ~A."
-                      (name sc) a b a b (reverse (u:href order (list b a)))))
+               (error 'sorting-class/bad-column-ordering
+                      :item (name sc)
+                      :col-0 a
+                      :col-1 b
+                      :previous-use (reverse (u:href order (list b a)))))
              (push (name sc) (u:href order (list a b)))))
       (digraph:mapc-breadth-first
        (lambda (sc)
-         (format t "Processing vertex: ~A~%" (name sc))
          (loop :for (a . rest) :on (all-cols sc)
                :do (loop :for b :in rest
                          :when b
@@ -296,9 +293,8 @@
                       (union-direct-parent-all-cols graph vert)
                       :test #'eq)))
         (unless refs-ok
-          (error "Sorting class ~A: sorting column references are ~
-mismatched with direct parents. Write better error later."
-                 (name vert)))
+          (error 'sorting-class/incomplete-column-specification
+                 :item (name vert)))
 
         (let ((duplicates nil))
           (dolist (dec-col (dec-cols vert))
@@ -308,11 +304,9 @@ mismatched with direct parents. Write better error later."
                   (setf (u:href dec-tbl dec-name) t))))
 
           (when duplicates
-            (error "Sorting class ~A: Cannot declare a sorting column ~
-(with another sorting class or itself) more than once:~%~
-Duplicates: ~A. Write better error later."
-                   (name vert)
-                   duplicates))))))
+            (error 'sorting-class/duplicate-sorting-column-definitions
+                   :item (name vert)
+                   :duplicates duplicates))))))
 
   t)
 
@@ -427,8 +421,19 @@ and a list of (col-name (comparator-sym default-value))."
 
 (defun rule-db/no-inheritance-cycles (graph)
   ;; Check for cycles.
-  ;; TODO: Handle better later if there is an error.
-  (digraph:topological-sort graph)
+
+  ;; Unfortunately CL-DIGRAPH doesn't give us a good means to deal with the
+  ;; fact there is a cycle in the graph. So, we catch what we often hope is a
+  ;; cycle error signaled condition (as opposed to out of disk space or the
+  ;; many other things that could have happened) and re-signal a new
+  ;; condition that is a more meaningful error.
+  (handler-bind ((error
+                   (lambda (c)
+                     (declare (ignore c))
+                     (error 'sorting-class/no-inheritance-cycles
+                            :item "[No good information. Sorry.]"
+                            :cycle graph))))
+    (digraph:topological-sort graph))
   t)
 
 (defun rule-db/sort/base-is-the-only-root (graph)
@@ -437,11 +442,11 @@ and a list of (col-name (comparator-sym default-value))."
   ;; be disjoint sub-graphs in the whole of the inheritance structure.
   (let ((roots (digraph:roots graph)))
     (when (/= (length roots) 1)
-      (error "The sorting class inheritance graph can have only one root, ~
-but found roots: ~A" roots))
+      (error 'sorting-class/too-many-roots
+             :item roots))
     (unless (eq (name (car roots)) 'sort/base)
-      (error "The sorting class inheritance graph root must be SORT/BASE, ~
-not ~A" (car roots))))
+      (error 'sorting-class/wrong-root
+             :item (name (car roots)))))
   t)
 
 ;; Removal of extraneous ancestors of two nodes in a DAG requires a
@@ -479,9 +484,8 @@ not ~A" (car roots))))
         (pushnew sc-name duplicates :test #'eq)))
 
     (when duplicates
-      (error "A sorting class name may not be defined more than once.~%~%~
-Duplicate sorting classes: ~A"
-             duplicates)))
+      (error 'sorting-class/duplicate-sorting-classes
+             :item duplicates)))
   t)
 
 (defun doit10 () ;; rule-db/sorting-class-name-unique
@@ -518,8 +522,8 @@ Duplicate sorting classes: ~A"
       (u:do-hash (sorting-class missing-parents missing-tbl)
         (push (list sorting-class missing-parents) collected-problems))
       (when collected-problems
-        (error "Some sorting classes have missing parents:~%~{ ~A~^~%~}"
-               collected-problems)))
+        (error 'sorting-class/undefined-sorting-classes
+               :item collected-problems)))
     t))
 
 
@@ -633,24 +637,14 @@ is not :common-lisp or :keyword."
      (declare (ignore colnames))
      (if (eq sc-name 'sort/base)
          (when parents
-           (error "Sorting class SORT/BASE may not have parents: ~A"
-                  parents))
+           (error 'sorting-class/sort-base-is-not-root
+                  :item parents))
          (unless parents
-           (error "Sorting class ~A: parents cannot be NIL." sc-name))))
+           (error 'sorting-class/must-not-be-root
+                  :item sc-name))))
    raw-db)
   t)
 
-(defun rule-db/sort-class-may-not-be-its-own-parent (raw-db)
-  (process-sorting-classes
-   (lambda (sc-name parents colnames)
-     (declare (ignore colnames))
-     (when (member sc-name parents)
-       (error "The sorting class ~A cannot be its own parent in the parent list: ~A"
-              sc-name parents)))
-   raw-db)
-  t)
-
-;; TODO: Put into prove.
 (defun rule-db/no-duplicate-parents (sc parents cols)
   (declare (ignore cols))
   (let ((tbl (u:dict #'eq))
@@ -664,10 +658,10 @@ is not :common-lisp or :keyword."
         (when (> reference-count 1)
           (pushnew parent duplicates :test #'eq))))
     (when duplicates
-      (error "Sorting class ~A may not have duplicate parents.~%~%~
-              Parents: ~A.~%~
-              Duplicate parents: ~A"
-             sc parents (reverse duplicates))))
+      (error 'sorting-class/no-duplicate-parents
+             :item sc
+             :parents parents
+             :duplicates (reverse duplicates))))
   t)
 
 ;; NOTE: Assumes canonicalized sorting-class form.
@@ -684,10 +678,10 @@ is not :common-lisp or :keyword."
         (when (> reference-count 1)
           (pushnew col duplicates :test #'eq))))
     (when duplicates
-      (error "Sorting class ~A may not have duplicate cols.~%~%~
-              Cols: ~A.~%~
-              Duplicate cols: ~A"
-             sc cols (reverse duplicates))))
+      (error 'sorting-class/no-duplicate-sorting-columns
+             :item sc
+             :columns cols
+             :duplicates (reverse duplicates))))
   t)
 
 
@@ -729,7 +723,7 @@ DEFINE-SORTING-CLASSES DSL doesn't currently allow such things."
 
 ;; The two columnnames representing sort/base's rightmost columns that the
 ;; user may never specify themselves.
-;; v::component-type v::serial-number
+;; v::component-type v::instance-id
 
 (defun canonicalize-sorting-class-for-linearization (sc-name parents cols)
   "Assume the sorting class spec is syntactically well formed.
@@ -891,7 +885,6 @@ on V:sort/base."
   ;; virality.
   #++(sort/render-layer (sort/base) ((render-layer :sorter render-sort-hook
                                                    :default :default))))
-
 
 
 ;; Reify metadata into core data structure

@@ -124,3 +124,119 @@
   (:report (lambda (c s)
              (format s "Sorting class has a type error: ~S"
                      (item c)))))
+
+(define-condition sorting-class/sort-base-is-not-root
+    (sorting-class/type)
+  ()
+  (:report (lambda (c s)
+             (format s "Sorting class SORT/BASE may not have parents: ~A"
+                     (item c)))))
+
+(define-condition sorting-class/must-not-be-root
+    (sorting-class/type)
+  ()
+  (:report (lambda (c s)
+             (format s "Sorting class ~A: parents cannot be NIL."
+                     (item c)))))
+
+(define-condition sorting-class/no-duplicate-parents
+    (sorting-class/type)
+  ((%parents :reader parents
+             :initarg :parents)
+   (%duplicates :reader duplicates
+                :initarg :duplicates))
+  (:report (lambda (c s)
+             (format s "Sorting class ~A may not have duplicate parents.~%~%~
+              Parents: ~A.~%~
+              Duplicate parents: ~A"
+                     (item c) (parents c) (duplicates c)))))
+
+(define-condition sorting-class/no-duplicate-sorting-columns
+    (sorting-class/type)
+  ((%columns :reader columns
+             :initarg :columns)
+   (%duplicates :reader duplicates
+                :initarg :duplicates))
+  (:report (lambda (c s)
+             (format s "Sorting class ~A may not have duplicate columns.~%~%~
+              Columns: ~A.~%~
+              Duplicate columns: ~A"
+                     (item c) (columns c) (duplicates c)))))
+
+(define-condition sorting-class/no-inheritance-cycles
+    (sorting-class/type)
+  ((%cycle :reader cycle
+           :initarg :cycle))
+  (:report (lambda (c s)
+             (format s "Sorting class ~A must not be in an inheritance cycle.~%~%~
+              Cycle: ~A.~%"
+                     (item c) (cycle c)))))
+
+(define-condition sorting-class/too-many-roots
+    (sorting-class/type)
+  ()
+  (:report (lambda (c s)
+             (format s "The sorting class inheritance graph can have only ~
+                        one root, but found roots: ~A"
+                     (item c)))))
+
+(define-condition sorting-class/wrong-root
+    (sorting-class/type)
+  ()
+  (:report (lambda (c s)
+             (format s
+                     "The sorting class inheritance graph root must be ~
+                      SORT/BASE, not ~A"
+                     (item c)))))
+
+(define-condition sorting-class/undefined-sorting-classes
+    (sorting-class/type)
+  ()
+  (:report (lambda (c s)
+             (format s
+                     "These sorting classes are undefined:~%~{ ~A~^~%~}"
+                     (item c)))))
+
+(define-condition sorting-class/duplicate-sorting-classes
+    (sorting-class/type)
+  ()
+  (:report (lambda (c s)
+             (format s "A sorting class name may not be defined more than ~
+                        once.~%~% Duplicate sorting classes: ~A"
+                     (item c)))))
+
+(define-condition sorting-class/incomplete-column-specification
+    (sorting-class/type)
+  ()
+  (:report (lambda (c s)
+             (format s "Sorting class ~A: sorting column reference(s) from ~
+                        one or more parents are missing."
+                     (item c)))))
+
+(define-condition sorting-class/duplicate-sorting-column-definitions
+    (sorting-class/type)
+  ((%duplicates :reader duplicates
+                :initarg :duplicates))
+  (:report (lambda (c s)
+             (format s "Sorting class ~A: Cannot declare a sorting column ~
+                        (with another sorting class or itself) more than once:~%~
+                        Duplicates: ~A."
+                     (item c) (duplicates c)))))
+
+(define-condition sorting-class/bad-column-ordering
+    (sorting-class/type)
+  ((%col-0 :reader col-0
+           :initarg :col-0)
+   (%col-1 :reader col-1
+           :initarg :col-1)
+   (%previous-use :reader previous-use
+                  :initarg :previous-use))
+  (:report (lambda (c s)
+             (format s "Sorting Class ~A: Two column pairs are in a reversed order:~% Column ~A is inconsistent with column ~A given other uses of ~A and ~A~% as found in: ~A."
+
+                     (item c)
+                     (col-0 c)
+                     (col-1 c)
+                     (col-0 c)
+                     (col-1 c)
+                     (previous-use c)))))

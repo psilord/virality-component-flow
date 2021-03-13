@@ -248,7 +248,6 @@ then print out the result of which form failed."
     (assert-validity-rules raw-db
       (a1::rule-db/sorting-classes-syntactically-well-formed raw-db)
       (a1::rule-db/validate-parent-count raw-db)
-      (a1::rule-db/sort-class-may-not-be-its-own-parent raw-db)
       (a1::rule-db/no-missing-parent-declarations raw-db))
 
     ;; Now we can build the graph properly.
